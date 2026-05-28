@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Hammer · Support Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/admin/support/dashboard.css?v=2" id="dashboardCss" />
+  <script>
+    (function () {
+      var link = document.getElementById("dashboardCss");
+      link.href = location.pathname.indexOf("/debug/support-dashboard") !== -1
+        ? "/debug/support-dashboard.css?v=2"
+        : "/admin/support/dashboard.css?v=2";
+    })();
+  </script>
+</head>
+<body>
+  <div class="login-gate" id="loginGate">
+    <div class="login-card">
+      <div class="login-card__brand">
+        <span class="login-card__logo" role="img" aria-label="Hammer"></span>
+      </div>
+      <h2>Support Control</h2>
+      <form id="loginForm" autocomplete="on">
+        <input type="password" id="loginPassword" name="password" placeholder="Admin password" autocomplete="current-password" />
+        <p class="login-error" id="loginError" hidden></p>
+        <button class="btn btn--primary btn--red" id="btnLogin" type="submit" style="width:100%">Enter</button>
+      </form>
+      <p class="settings-note" style="margin-top:1rem;margin-bottom:0">Private admin access only.</p>
+    </div>
+  </div>
+
+  <div id="appShell" style="visibility:hidden">
+    <header class="topbar">
+      <div class="topbar__inner">
+        <a class="topbar__brand" href="/" aria-label="Hammer home">
+          <span class="topbar__wordmark" role="img" aria-label="Hammer"></span>
+          <span class="topbar__subtitle">Support AI</span>
+        </a>
+        <div class="topbar__meta">
+          <span class="env-badge" id="envBadge">local</span>
+          <div class="live-badge">
+            <span class="live-badge__dot is-idle" id="liveDot"></span>
+            <span id="liveLabel">Idle</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar__section">Support AI</div>
+        <nav class="sidebar__nav" role="tablist">
+          <button class="tab is-active" data-tab="overview" role="tab">Overview</button>
+          <button class="tab" data-tab="sessions" role="tab">Sessions</button>
+          <button class="tab" data-tab="knowledge" role="tab">Knowledge</button>
+          <button class="tab" data-tab="settings" role="tab">Settings</button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <h1 class="page-title" id="pageTitle">Overview</h1>
+
+        <section class="panel is-active" id="panel-overview" role="tabpanel">
+          <div class="stats" id="statGrid"></div>
+          <div class="grid-2">
+            <div class="card">
+              <div class="card__head">Live Activity</div>
+              <div class="card__body" id="activityFeed">
+                <div class="empty">No activity yet — start a support session to see what Hannah is doing.</div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card__head">Channels · 7 days</div>
+              <div class="card__body" id="channelBreakdown">
+                <div class="empty">No channel data yet.</div>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:1rem">
+            <div class="card__head">Slack sync</div>
+            <div class="card__body" id="slackStatus">
+              <div class="empty">Loading…</div>
+            </div>
+            <div class="card__body" style="max-height:none;border-top:1px solid var(--border-light);padding-top:0.75rem">
+              <div class="btn-row" style="margin-top:0">
+                <button class="btn btn--primary btn--red" id="btnSlackSync" type="button">Sync channel</button>
+                <button class="btn btn--ghost" id="btnSlackBackfill" type="button">Full backfill</button>
+              </div>
+              <p class="settings-note" id="slackSyncResult" style="margin-top:0.75rem;margin-bottom:0" hidden></p>
+            </div>
+          </div>
+          <div class="card" style="margin-top:1rem">
+            <div class="card__head">HubSpot Knowledge Base</div>
+            <div class="card__body" id="hubspotKbStatus">
+              <div class="empty">Loading…</div>
+            </div>
+            <div class="card__body" style="max-height:none;border-top:1px solid var(--border-light);padding-top:0.75rem">
+              <p class="settings-note" style="margin-top:0;margin-bottom:0.75rem">Syncs articles from your HubSpot Help Center into the AI knowledge index.</p>
+              <div class="btn-row" style="margin-top:0">
+                <button class="btn btn--primary btn--red" id="btnHubspotKbSync" type="button">Sync HubSpot KB</button>
+              </div>
+              <p class="settings-note" id="hubspotKbSyncResult" style="margin-top:0.75rem;margin-bottom:0" hidden></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-sessions" role="tabpanel">
+          <div class="calls-toolbar">
+            <div class="calls-toolbar__meta" id="sessionsMeta">Loading sessions…</div>
+          </div>
+          <div class="card">
+            <div class="card__body" style="max-height:none;padding:0">
+              <table class="calls-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Channel</th>
+                    <th>Category</th>
+                    <th>Escalated</th>
+                    <th>Resolved</th>
+                  </tr>
+                </thead>
+                <tbody id="sessionsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-knowledge" role="tabpanel">
+          <div class="stats" id="kbStatGrid"></div>
+          <div class="card" style="margin-bottom:1rem">
+            <div class="card__head">Corpus details</div>
+            <div class="card__body" id="kbIndexMeta">
+              <div class="empty">Loading…</div>
+            </div>
+          </div>
+          <nav class="kb-subnav" role="tablist" aria-label="Knowledge sections">
+            <button class="kb-subnav__btn is-active" data-kb-tab="sources" role="tab">Sources</button>
+            <button class="kb-subnav__btn" data-kb-tab="search" role="tab">Test Search</button>
+            <button class="kb-subnav__btn" data-kb-tab="playbook" role="tab">Playbook</button>
+          </nav>
+
+          <div class="kb-panel" id="kb-panel-sources">
+            <div class="kb-toolbar">
+              <div class="kb-toolbar__meta" id="kbSourcesMeta">Loading…</div>
+              <input type="search" class="kb-search-input" id="kbSourceFilter" placeholder="Filter by title, topic, or content…" autocomplete="off" />
+            </div>
+            <div id="kbDocList" class="kb-doc-list"></div>
+          </div>
+
+          <div class="kb-panel" id="kb-panel-search" hidden>
+            <div class="card">
+              <div class="card__head">Test Retrieval</div>
+              <div class="card__body">
+                <p class="kb-hint">Enter a question to see what the support agent would retrieve from the wiki.</p>
+                <div class="field-row">
+                  <input type="text" class="kb-search-query" id="kbSearchQuery" placeholder="e.g. How do I reset my password?" autocomplete="off" />
+                  <button class="btn btn--primary" id="btnKbSearch" type="button">Search</button>
+                </div>
+                <div id="kbSearchResults" class="kb-search-results"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="kb-panel" id="kb-panel-playbook" hidden>
+            <div class="kb-playbook-header">
+              <div>
+                <div class="settings-section__label" style="margin-bottom:0.2rem">Learned Playbook</div>
+                <div class="kb-hint" id="kbPlaybookNote">Approved support answers.</div>
+              </div>
+            </div>
+            <div id="kbPlaybookList" class="kb-playbook-list"></div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-settings" role="tabpanel">
+          <p class="settings-note">Prompt and model overrides for the support voice and chat agents.</p>
+
+          <div class="settings-section">
+            <div class="settings-section__label">LLM Model</div>
+            <div class="field-row">
+              <input type="text" id="settingModel" placeholder="gpt-4o-mini" />
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-section__label">Voice Prompt</div>
+            <textarea id="settingVoice" spellcheck="false" rows="8"></textarea>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-section__label">Chat Prompt</div>
+            <textarea id="settingChat" spellcheck="false" rows="8"></textarea>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn--primary btn--red" id="btnSaveSettings" type="button">Save Settings</button>
+            <button class="btn btn--ghost" id="btnResetSettings" type="button">Reset to Defaults</button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="call-modal kb-doc-modal" id="kbDocPreview" hidden aria-hidden="true">
+    <div class="call-modal__backdrop" id="kbDocPreviewBackdrop" aria-hidden="true"></div>
+    <div class="call-modal__panel kb-doc-preview" role="dialog" aria-modal="true" aria-labelledby="kbDocPreviewTitle">
+      <div class="kb-doc-preview__head">
+        <div class="kb-doc-preview__intro">
+          <div class="kb-doc-preview__title" id="kbDocPreviewTitle"></div>
+          <div class="kb-doc-preview__meta" id="kbDocPreviewMeta"></div>
+        </div>
+        <button type="button" class="kb-doc-preview__close" id="kbDocPreviewClose" aria-label="Close preview">✕</button>
+      </div>
+      <pre class="kb-doc-preview__body" id="kbDocPreviewBody"></pre>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = "/api/admin/support";
+    const TOKEN_KEY = "support_admin_token";
+    const PAGE_TITLES = { overview: "Overview", sessions: "Sessions", knowledge: "Knowledge", settings: "Settings" };
+    let token = sessionStorage.getItem(TOKEN_KEY) || "";
+    let cachedCalls = [];
+    let cachedKbDocs = [];
+    let kbExpandedGroups = new Set();
+    const KB_SOURCE_ORDER = ["Wiki", "HubSpot KB", "Playbook", "Slack", "Upload"];
+    const KB_SOURCE_HINTS = {
+      "Wiki": "Curated support pages and synthesized topic Q&A.",
+      "HubSpot KB": "Help Center articles synced from HubSpot.",
+      "Playbook": "Admin-approved answers Hannah can cite directly.",
+      "Slack": "Support channel threads indexed for retrieval.",
+      "Upload": "Manual uploads and other raw imports.",
+    };
+    const KB_COLLAPSE_LIMIT = 20;
+
+    const $ = (sel) => document.querySelector(sel);
+
+    function authHeaders(extra) {
+      const h = { "Content-Type": "application/json", ...(extra || {}) };
+      if (token) h.Authorization = "Bearer " + token;
+      return h;
+    }
+
+    async function api(path, opts = {}) {
+      const res = await fetch(API + path, { ...opts, headers: authHeaders(opts.headers) });
+      if (res.status === 401) {
+        showLogin();
+        throw new Error("Unauthorized");
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      return res.json();
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function fmtTime(iso) {
+      if (!iso) return "—";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      } catch {
+        return iso;
+      }
+    }
+
+    function channelLabel(ch) {
+      const map = {
+        browser_voice: "Browser",
+        browser: "Browser",
+        chat: "Chat",
+        text: "Chat",
+        phone: "Phone",
+      };
+      return map[ch] || (ch ? String(ch).replace(/_/g, " ") : "Unknown");
+    }
+
+    function showToast(msg) {
+      const el = $("#toast");
+      el.textContent = msg;
+      el.classList.add("is-visible");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => el.classList.remove("is-visible"), 2600);
+    }
+
+    function showLogin() {
+      token = "";
+      sessionStorage.removeItem(TOKEN_KEY);
+      $("#loginGate").classList.remove("is-hidden");
+      $("#appShell").style.visibility = "hidden";
+    }
+
+    function showApp() {
+      $("#loginGate").classList.add("is-hidden");
+      $("#appShell").style.visibility = "visible";
+    }
+
+    function isToday(iso) {
+      if (!iso) return false;
+      const d = new Date(iso);
+      const now = new Date();
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    }
+
+    function withinDays(iso, days) {
+      if (!iso) return false;
+      const d = new Date(iso).getTime();
+      return Date.now() - d <= days * 86400000;
+    }
+
+    function aggregateChannels(calls) {
+      const counts = {};
+      (calls || []).forEach((c) => {
+        if (!withinDays(c.started_at, 7)) return;
+        const key = c.channel || "unknown";
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      return counts;
+    }
+
+    function renderStats(data, calls) {
+      const s = data.stats || {};
+      const slack = data.slack_sync || {};
+      const active = s.active_now || 0;
+      const todayCount = (calls || []).filter((c) => isToday(c.started_at)).length;
+      const weekCount = (calls || []).filter((c) => withinDays(c.started_at, 7)).length;
+
+      $("#statGrid").innerHTML = [
+        { label: "Active Now", value: active, accent: active > 0, sub: active ? "in progress" : "idle" },
+        { label: "Today", value: todayCount, sub: "sessions" },
+        { label: "7 Days", value: weekCount, sub: "sessions" },
+        { label: "Escalated", value: s.escalated || 0, sub: "handoffs" },
+        { label: "Resolved", value: s.resolved || 0, sub: "closed" },
+        { label: "Slack", value: slack.thread_count || 0, sub: slack.configured ? "threads indexed" : "not configured" },
+      ].map((item) => `
+        <div class="stat${item.accent ? " stat--accent" : ""}">
+          <div class="stat__label">${item.label}</div>
+          <div class="stat__value">${item.value}</div>
+          <div class="stat__sub">${escapeHtml(item.sub)}</div>
+        </div>
+      `).join("");
+
+      const dot = $("#liveDot");
+      const label = $("#liveLabel");
+      if (active > 0) {
+        dot.classList.remove("is-idle");
+        label.textContent = `${active} live`;
+      } else {
+        dot.classList.add("is-idle");
+        label.textContent = "Idle";
+      }
+    }
+
+    function renderChannels(channels) {
+      const el = $("#channelBreakdown");
+      const entries = Object.entries(channels || {});
+      if (!entries.length) {
+        el.innerHTML = '<div class="empty">No channel data yet.</div>';
+        return;
+      }
+      el.innerHTML = `<div class="channel-bar">${entries.map(([k, v]) =>
+        `<span class="channel-chip">${escapeHtml(channelLabel(k))} · ${v}</span>`
+      ).join("")}</div>`;
+    }
+
+    function renderSlackStatus(slack) {
+      const el = $("#slackStatus");
+      if (!slack) {
+        el.innerHTML = '<div class="empty">Slack sync status unavailable.</div>';
+        return;
+      }
+      const statusClass = slack.configured ? "settings-route settings-route--ok" : "settings-route settings-route--warn";
+      el.innerHTML = `
+        <div class="${statusClass}">
+          <div class="settings-route__status">${slack.configured ? "Configured" : "Not configured"}</div>
+          <div class="settings-route__line">Threads indexed: ${slack.thread_count || 0}</div>
+          <div class="settings-route__line">Last sync: ${slack.last_sync_at ? escapeHtml(slack.last_sync_at) : "Never"}</div>
+          ${slack.last_error ? `<div class="settings-route__line" style="color:#b91c1c">Error: ${escapeHtml(slack.last_error)}</div>` : ""}
+        </div>`;
+    }
+
+    function renderHubspotKbStatus(hubspot) {
+      const el = $("#hubspotKbStatus");
+      if (!hubspot) {
+        el.innerHTML = '<div class="empty">HubSpot sync status unavailable.</div>';
+        return;
+      }
+      const statusClass = hubspot.configured ? "settings-route settings-route--ok" : "settings-route settings-route--warn";
+      el.innerHTML = `
+        <div class="${statusClass}">
+          <div class="settings-route__status">${hubspot.configured ? "Configured" : "Not configured"}</div>
+          <div class="settings-route__line">KB ID: ${escapeHtml(hubspot.knowledge_base_id || "—")}</div>
+          <div class="settings-route__line">Articles on disk: ${hubspot.files_on_disk ?? hubspot.article_count ?? 0}</div>
+          <div class="settings-route__line">Last sync: ${hubspot.last_sync_at ? escapeHtml(hubspot.last_sync_at) : "Never"}</div>
+          ${hubspot.last_error ? `<div class="settings-route__line" style="color:#b91c1c">Error: ${escapeHtml(hubspot.last_error)}</div>` : ""}
+        </div>`;
+    }
+
+    function renderSessions(calls) {
+      const rows = calls || [];
+      $("#sessionsMeta").textContent = rows.length ? `${rows.length} session${rows.length === 1 ? "" : "s"}` : "No sessions yet";
+      if (!rows.length) {
+        $("#sessionsBody").innerHTML = '<tr><td colspan="5"><div class="empty">No sessions yet.</div></td></tr>';
+        return;
+      }
+      $("#sessionsBody").innerHTML = rows.map((c) => `
+        <tr>
+          <td>${escapeHtml(fmtTime(c.started_at))}</td>
+          <td>${escapeHtml(channelLabel(c.channel))}</td>
+          <td>${escapeHtml(c.issue_category || "—")}</td>
+          <td>${c.escalated ? "Yes" : "No"}</td>
+          <td>${c.resolved ? "Yes" : "No"}</td>
+        </tr>
+      `).join("");
+    }
+
+    function formatChars(n) {
+      const v = Number(n) || 0;
+      if (v >= 1000000) return (v / 1000000).toFixed(1) + "M";
+      if (v >= 1000) return (v / 1000).toFixed(1) + "k";
+      return String(v);
+    }
+
+    function renderKbStats(stats) {
+      const s = stats || {};
+      const slackSub = s.slack_configured ? "threads indexed" : (s.slack_docs ? "docs in index" : "not configured");
+      const hubspotSub = s.hubspot_configured ? "articles indexed" : (s.hubspot_articles ? "on disk" : "not configured");
+
+      $("#kbStatGrid").innerHTML = [
+        { label: "Chunks", value: s.total_chunks || 0, sub: "searchable" },
+        { label: "Documents", value: s.total_docs || 0, sub: "indexed sources" },
+        { label: "Wiki", value: s.wiki_docs || 0, sub: `${s.wiki_chunks || 0} chunks` },
+        { label: "Slack", value: s.slack_threads || s.slack_docs || 0, sub: slackSub },
+        { label: "HubSpot", value: s.hubspot_articles || 0, sub: hubspotSub },
+        { label: "Playbook", value: s.playbook_entries || 0, sub: `${s.playbook_chunks || 0} chunks` },
+      ].map((item) => `
+        <div class="stat">
+          <div class="stat__label">${item.label}</div>
+          <div class="stat__value">${item.value}</div>
+          <div class="stat__sub">${escapeHtml(item.sub)}</div>
+        </div>
+      `).join("");
+
+      $("#kbIndexMeta").innerHTML = `
+        <div class="settings-route settings-route--ok">
+          <div class="settings-route__line">${formatChars(s.total_chars || 0)} characters indexed across ${s.total_chunks || 0} searchable chunks</div>
+          <div class="settings-route__line">${s.unique_terms || 0} unique terms in the search index</div>
+          <div class="settings-route__line">Wiki ${s.wiki_docs || 0} · HubSpot ${s.hubspot_articles || 0} · Slack ${s.slack_threads || 0} · Playbook ${s.playbook_entries || 0}</div>
+          <div class="settings-route__line">Product metadata: ${s.sqlite_ok ? "SQLite ready" : "memory only"}</div>
+        </div>`;
+    }
+
+    function kbBadgeClass(label) {
+      return ({
+        "Wiki": "wiki",
+        "HubSpot KB": "hubspot",
+        "Slack": "slack",
+        "Playbook": "playbook",
+        "Upload": "upload",
+      })[label] || "upload";
+    }
+
+    function fmtKbDate(iso) {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso.includes("T") ? iso : iso + "T12:00:00");
+        if (Number.isNaN(d.getTime())) return iso;
+        return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+      } catch {
+        return iso;
+      }
+    }
+
+    function kbDocLookup() {
+      const map = new Map();
+      cachedKbDocs.forEach((doc) => map.set(doc.doc_id, doc));
+      return map;
+    }
+
+    function renderDocRow(doc) {
+      const badge = kbBadgeClass(doc.source_label);
+      const metaParts = [`${doc.chunk_count || 0} chunks`];
+      if (doc.char_count) metaParts.push(`${formatChars(doc.char_count)} chars`);
+      const footLeft = doc.category || doc.source_label || doc.kind || "Source";
+      const dateLabel = fmtKbDate(doc.date);
+      return `
+        <button type="button" class="kb-doc-row" data-doc-id="${escapeHtml(doc.doc_id)}">
+          <div class="kb-doc-row__main">
+            <div class="kb-doc-row__top">
+              <span class="kb-badge kb-badge--${badge}">${escapeHtml(doc.source_label || doc.kind || "Source")}</span>
+              ${dateLabel ? `<span class="kb-doc-row__date">${escapeHtml(dateLabel)}</span>` : ""}
+            </div>
+            <div class="kb-doc-row__title">${escapeHtml(doc.title || doc.doc_id)}</div>
+            ${doc.preview ? `<div class="kb-doc-row__preview">${escapeHtml(doc.preview)}</div>` : ""}
+            <div class="kb-doc-row__foot">
+              <span class="kb-doc-row__foot-left">${escapeHtml(footLeft)}</span>
+              <span class="kb-doc-row__foot-right">${escapeHtml(metaParts.join(" · "))}</span>
+            </div>
+          </div>
+        </button>`;
+    }
+
+    function renderKnowledgeDocs(payload) {
+      const docs = payload.docs || payload || [];
+      cachedKbDocs = docs;
+      const groups = payload.groups || {};
+      const filter = ($("#kbSourceFilter")?.value || "").trim().toLowerCase();
+      const filtered = filter
+        ? docs.filter((doc) =>
+            [doc.title, doc.preview, doc.category, doc.source_label, doc.doc_id]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase()
+              .includes(filter)
+          )
+        : docs;
+
+      const summaryParts = KB_SOURCE_ORDER.filter((key) => groups[key]).map((key) => `${groups[key]} ${key}`);
+      $("#kbSourcesMeta").textContent = filtered.length === docs.length
+        ? `${docs.length} source${docs.length === 1 ? "" : "s"} · ${summaryParts.join(" · ") || "No sources"}`
+        : `${filtered.length} of ${docs.length} sources`;
+
+      if (!filtered.length) {
+        $("#kbDocList").innerHTML = '<div class="kb-empty">No matching knowledge sources.</div>';
+        return;
+      }
+
+      const bySource = {};
+      filtered.forEach((doc) => {
+        const key = doc.source_label || doc.kind || "Other";
+        (bySource[key] ||= []).push(doc);
+      });
+
+      $("#kbDocList").innerHTML = KB_SOURCE_ORDER.filter((key) => bySource[key]?.length).map((source) => {
+        const items = [...bySource[source]].sort((a, b) => {
+          if (source === "Slack" && a.date && b.date) return b.date.localeCompare(a.date);
+          return (a.title || a.doc_id || "").localeCompare(b.title || b.doc_id || "");
+        });
+        const expanded = kbExpandedGroups.has(source) || items.length <= KB_COLLAPSE_LIMIT;
+        const visible = expanded ? items : items.slice(0, KB_COLLAPSE_LIMIT);
+        const hiddenCount = items.length - visible.length;
+        return `
+          <section class="kb-source-group">
+            <div class="kb-source-group__head">
+              <div>
+                <div class="kb-source-group__title">${escapeHtml(source)}</div>
+                <div class="kb-source-group__hint">${escapeHtml(KB_SOURCE_HINTS[source] || "")}</div>
+              </div>
+              <div class="kb-source-group__count">${items.length} source${items.length === 1 ? "" : "s"}</div>
+            </div>
+            <div class="kb-source-group__list">
+              ${visible.map((doc) => renderDocRow(doc)).join("")}
+            </div>
+            ${hiddenCount > 0 ? `<button type="button" class="kb-source-group__more" data-kb-group="${escapeHtml(source)}">Show all ${items.length} ${escapeHtml(source)} sources</button>` : ""}
+          </section>`;
+      }).join("");
+    }
+
+    async function openKbDocPreview(docId) {
+      const modal = $("#kbDocPreview");
+      const cached = kbDocLookup().get(docId);
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+      $("#kbDocPreviewTitle").textContent = cached?.title || docId;
+      $("#kbDocPreviewMeta").textContent = cached
+        ? [cached.source_label, cached.category, fmtKbDate(cached.date), cached.url].filter(Boolean).join(" · ")
+        : docId;
+      $("#kbDocPreviewBody").textContent = "Loading…";
+      try {
+        const data = await api("/knowledge/doc?doc_id=" + encodeURIComponent(docId));
+        if (!data.ok) throw new Error(data.error || "Could not load document");
+        $("#kbDocPreviewTitle").textContent = data.title || cached?.title || docId;
+        const metaParts = [
+          data.source_label || cached?.source_label,
+          data.category || cached?.category,
+          fmtKbDate(data.date || cached?.date),
+          data.chunk_count ? `${data.chunk_count} chunks` : "",
+          data.url || cached?.url,
+        ].filter(Boolean);
+        $("#kbDocPreviewMeta").textContent = metaParts.join(" · ");
+        $("#kbDocPreviewBody").textContent = data.text || "";
+      } catch (err) {
+        $("#kbDocPreviewBody").textContent = err.message || "Could not load document.";
+      }
+    }
+
+    function closeKbDocPreview() {
+      const modal = $("#kbDocPreview");
+      if (!modal || modal.hidden) return;
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("modal-open");
+      $("#kbDocPreviewBody").textContent = "";
+    }
+
+    function renderPlaybook(entries) {
+      const list = entries || [];
+      $("#kbPlaybookNote").textContent = list.length ? `${list.length} approved entries` : "Empty playbook";
+      if (!list.length) {
+        $("#kbPlaybookList").innerHTML = '<div class="kb-empty">No playbook entries yet.</div>';
+        return;
+      }
+      $("#kbPlaybookList").innerHTML = list.map((e) => `
+        <div class="kb-playbook-entry">
+          <div class="kb-playbook-entry__head">
+            <span class="kb-playbook-entry__title">${escapeHtml(e.heading || "Entry")}</span>
+          </div>
+          <div class="kb-playbook-entry__body">${escapeHtml(e.body || "")}</div>
+        </div>
+      `).join("");
+    }
+
+    async function refreshOverview() {
+      const data = await api("/overview");
+      if (!cachedCalls.length) {
+        try {
+          const callsData = await api("/calls?limit=500");
+          cachedCalls = callsData.calls || [];
+        } catch {
+          cachedCalls = [];
+        }
+      }
+      renderStats(data, cachedCalls);
+      renderChannels(aggregateChannels(cachedCalls));
+      renderSlackStatus(data.slack_sync);
+      renderHubspotKbStatus(data.hubspot_kb_sync);
+    }
+
+    async function refreshSessions() {
+      const data = await api("/calls?limit=100");
+      cachedCalls = data.calls || [];
+      renderSessions(cachedCalls);
+    }
+
+    async function refreshKnowledge() {
+      const [stats, docs, pb] = await Promise.all([
+        api("/knowledge/stats"),
+        api("/knowledge/docs"),
+        api("/knowledge/playbook"),
+      ]);
+      renderKbStats(stats);
+      renderKnowledgeDocs(docs);
+      renderPlaybook(pb.entries || []);
+    }
+
+    async function refreshSettings() {
+      const s = await api("/settings");
+      const e = s.effective || {};
+      $("#settingModel").value = e.chat_model || "";
+      $("#settingVoice").value = e.support_voice_prompt || "";
+      $("#settingChat").value = e.support_chat_prompt || "";
+    }
+
+    async function refreshAll() {
+      await Promise.all([refreshOverview(), refreshSessions(), refreshKnowledge(), refreshSettings()]);
+    }
+
+    $("#loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const secret = $("#loginPassword").value.trim();
+      const err = $("#loginError");
+      err.hidden = true;
+      $("#btnLogin").disabled = true;
+      token = secret;
+      sessionStorage.setItem(TOKEN_KEY, token);
+      try {
+        await api("/overview");
+        showApp();
+        await refreshAll();
+      } catch {
+        err.textContent = "Invalid password";
+        err.hidden = false;
+        token = "";
+        sessionStorage.removeItem(TOKEN_KEY);
+      } finally {
+        $("#btnLogin").disabled = false;
+      }
+    });
+
+    document.querySelectorAll(".tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((b) => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        document.querySelectorAll(".panel").forEach((p) => p.classList.remove("is-active"));
+        $("#panel-" + btn.dataset.tab).classList.add("is-active");
+        $("#pageTitle").textContent = PAGE_TITLES[btn.dataset.tab] || btn.dataset.tab;
+      });
+    });
+
+    document.querySelectorAll(".kb-subnav__btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".kb-subnav__btn").forEach((b) => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        ["sources", "search", "playbook"].forEach((id) => {
+          const panel = $("#kb-panel-" + id);
+          if (panel) panel.hidden = id !== btn.dataset.kbTab;
+        });
+      });
+    });
+
+    $("#kbSourceFilter")?.addEventListener("input", () => {
+      renderKnowledgeDocs({ docs: cachedKbDocs, groups: groupKbDocs(cachedKbDocs) });
+    });
+
+    function groupKbDocs(docs) {
+      const groups = {};
+      (docs || []).forEach((doc) => {
+        const key = doc.source_label || doc.kind || "Other";
+        groups[key] = (groups[key] || 0) + 1;
+      });
+      return groups;
+    }
+
+    $("#kbDocList").addEventListener("click", (event) => {
+      const moreBtn = event.target.closest("[data-kb-group]");
+      if (moreBtn) {
+        kbExpandedGroups.add(moreBtn.dataset.kbGroup);
+        renderKnowledgeDocs({ docs: cachedKbDocs, groups: groupKbDocs(cachedKbDocs) });
+        return;
+      }
+      const row = event.target.closest(".kb-doc-row[data-doc-id]");
+      if (row) openKbDocPreview(row.dataset.docId);
+    });
+
+    $("#kbDocPreviewClose")?.addEventListener("click", closeKbDocPreview);
+    $("#kbDocPreviewBackdrop")?.addEventListener("click", closeKbDocPreview);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeKbDocPreview();
+    });
+
+    $("#btnKbSearch").addEventListener("click", async () => {
+      const q = $("#kbSearchQuery").value.trim();
+      const el = $("#kbSearchResults");
+      if (!q) {
+        el.innerHTML = '<div class="kb-empty">Enter a query first.</div>';
+        return;
+      }
+      el.innerHTML = '<div class="kb-empty">Searching…</div>';
+      try {
+        const data = await api("/knowledge/search?q=" + encodeURIComponent(q));
+        const results = data.results || [];
+        if (!results.length) {
+          el.innerHTML = '<div class="kb-empty">No matches.</div>';
+          return;
+        }
+        el.innerHTML = results.map((r, i) => {
+          const cached = kbDocLookup().get(r.doc_id);
+          const title = cached?.title || r.doc_id || "Document";
+          const source = cached?.source_label || "";
+          return `
+          <div class="kb-result">
+            <div class="kb-result__head">
+              <span class="kb-result__rank">#${i + 1}</span>
+              <span class="kb-result__title">${escapeHtml(title)}</span>
+              <span class="kb-result__score">${r.score != null ? "score " + r.score : ""}</span>
+            </div>
+            <div class="kb-result__meta">${escapeHtml([source, cached?.category, r.doc_id].filter(Boolean).join(" · "))}</div>
+            <pre class="kb-result__text">${escapeHtml(r.text || "")}</pre>
+          </div>`;
+        }).join("");
+      } catch (err) {
+        el.innerHTML = `<div class="kb-empty">${escapeHtml(err.message)}</div>`;
+      }
+    });
+
+    async function runSlackSync(fullBackfill) {
+      const resultEl = $("#slackSyncResult");
+      resultEl.hidden = false;
+      resultEl.textContent = fullBackfill ? "Running full backfill…" : "Syncing…";
+      try {
+        const data = await api("/knowledge/slack/sync", {
+          method: "POST",
+          body: JSON.stringify({ full_backfill: fullBackfill }),
+        });
+        resultEl.textContent = data.message || JSON.stringify(data);
+        showToast(fullBackfill ? "Backfill complete" : "Sync complete");
+        cachedCalls = [];
+        await refreshOverview();
+        await refreshKnowledge();
+      } catch (err) {
+        resultEl.textContent = err.message;
+        showToast("Sync failed");
+      }
+    }
+
+    $("#btnSlackSync").addEventListener("click", () => runSlackSync(false));
+    $("#btnSlackBackfill").addEventListener("click", () => runSlackSync(true));
+
+    async function runHubspotKbSync() {
+      const resultEl = $("#hubspotKbSyncResult");
+      resultEl.hidden = false;
+      resultEl.textContent = "Syncing HubSpot Knowledge Base…";
+      try {
+        const data = await api("/knowledge/hubspot/sync", { method: "POST", body: "{}" });
+        resultEl.textContent = data.ok
+          ? `Wrote ${data.articles_written || 0} articles (${data.articles_discovered || 0} discovered).`
+          : (data.error || JSON.stringify(data));
+        showToast(data.ok ? "HubSpot KB synced" : "HubSpot sync failed");
+        await refreshOverview();
+        await refreshKnowledge();
+      } catch (err) {
+        resultEl.textContent = err.message;
+        showToast("HubSpot sync failed");
+      }
+    }
+
+    $("#btnHubspotKbSync").addEventListener("click", () => runHubspotKbSync());
+
+    $("#btnSaveSettings").addEventListener("click", async () => {
+      try {
+        await api("/settings", {
+          method: "PATCH",
+          body: JSON.stringify({
+            chat_model: $("#settingModel").value.trim(),
+            support_voice_prompt: $("#settingVoice").value,
+            support_chat_prompt: $("#settingChat").value,
+          }),
+        });
+        showToast("Settings saved");
+      } catch (err) {
+        showToast(err.message || "Save failed");
+      }
+    });
+
+    $("#btnResetSettings").addEventListener("click", async () => {
+      if (!confirm("Reset all prompt overrides to defaults?")) return;
+      try {
+        await api("/settings/reset", { method: "POST" });
+        await refreshSettings();
+        showToast("Defaults restored");
+      } catch (err) {
+        showToast(err.message || "Reset failed");
+      }
+    });
+
+    if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
+      $("#envBadge").textContent = "local";
+    } else {
+      $("#envBadge").textContent = "live";
+    }
+
+    if (token) {
+      api("/overview").then(() => { showApp(); refreshAll(); }).catch(showLogin);
+    } else {
+      showLogin();
+    }
+
+    setInterval(() => {
+      if (token) refreshOverview().catch(() => {});
+    }, 15000);
+  </script>
+</body>
+</html>

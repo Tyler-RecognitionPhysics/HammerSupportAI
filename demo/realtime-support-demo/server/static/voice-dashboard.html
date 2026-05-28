@@ -1,0 +1,2783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>Hammer · Voice Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/admin/voice/dashboard.css?v={{DASHBOARD_ASSET_V}}" id="dashboardCss" />
+  <script>
+    (function () {
+      var v = "{{DASHBOARD_ASSET_V}}";
+      var link = document.getElementById("dashboardCss");
+      var href = location.pathname.indexOf("/debug/voice-dashboard") !== -1
+        ? "/debug/voice-dashboard.css?v=" + v
+        : "/admin/voice/dashboard.css?v=" + v;
+      link.href = href;
+    })();
+  </script>
+</head>
+<body>
+  <div class="login-gate" id="loginGate">
+    <div class="login-card">
+      <div class="login-card__brand">
+        <span class="login-card__logo" role="img" aria-label="Hammer"></span>
+      </div>
+      <h2>Voice Control</h2>
+      <form id="loginForm" autocomplete="on">
+        <input type="password" id="loginPassword" name="password" placeholder="Admin password" autocomplete="current-password" />
+        <p class="login-error" id="loginError" hidden></p>
+        <button class="btn btn--primary btn--red" id="btnLogin" type="submit" style="width:100%">Enter</button>
+      </form>
+      <p class="settings-note" style="margin-top:1rem;margin-bottom:0">Private admin access only.</p>
+    </div>
+  </div>
+
+  <div id="appShell" style="visibility:hidden">
+    <header class="topbar">
+      <div class="topbar__inner">
+        <a class="topbar__brand" href="/" aria-label="Hammer home">
+          <span class="topbar__wordmark" role="img" aria-label="Hammer"></span>
+          <span class="topbar__subtitle">Voice AI</span>
+        </a>
+        <div class="topbar__meta">
+          <span class="env-badge" id="envBadge"></span>
+          <div class="live-badge">
+            <span class="live-badge__dot" id="liveDot"></span>
+            <span id="liveLabel">Connecting</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar__section">Voice AI</div>
+        <nav class="sidebar__nav" role="tablist">
+          <button class="tab is-active" data-tab="overview" role="tab">Overview</button>
+          <button class="tab" data-tab="calls" role="tab">Calls</button>
+          <button class="tab" data-tab="calendar" role="tab">Calendar</button>
+          <button class="tab" data-tab="knowledge" role="tab">Knowledge</button>
+          <button class="tab" data-tab="settings" role="tab">Settings</button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <h1 class="page-title" id="pageTitle">Overview</h1>
+
+    <!-- OVERVIEW -->
+    <section class="panel is-active" id="panel-overview" role="tabpanel">
+      <div class="stats" id="statGrid"></div>
+      <div class="card live-call-card" id="liveCallCard" hidden>
+        <div class="card__head live-call-card__head">
+          <span>Live Call</span>
+          <span class="live-call-card__meta" id="liveCallMeta"></span>
+          <span class="live-call-card__pulse" aria-hidden="true"></span>
+        </div>
+        <div class="card__body live-call-card__body">
+          <div class="transcript live-transcript" id="liveCallTranscript"></div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card__head">Live Activity</div>
+          <div class="card__body" id="activityFeed"></div>
+        </div>
+        <div class="card">
+          <div class="card__head">Channels · 7 days</div>
+          <div class="card__body" id="channelBreakdown"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CALLS -->
+    <section class="panel" id="panel-calls" role="tabpanel">
+      <div class="calls-toolbar">
+        <div class="calls-toolbar__row">
+          <div class="filter-pills" id="callsFilters" role="tablist" aria-label="Filter calls by outcome"></div>
+          <input type="search" class="calls-search" id="callsSearch" placeholder="Search contact, email, dealership…" autocomplete="off" />
+        </div>
+        <div class="calls-toolbar__meta" id="callsMeta">Loading calls…</div>
+      </div>
+      <div class="card">
+        <div class="card__body" style="max-height:none;padding:0">
+          <table class="calls-table">
+            <thead>
+              <tr>
+                <th><button type="button" class="calls-th" data-col="time" aria-haspopup="menu">Time<span class="calls-th__ind"></span></button></th>
+                <th><button type="button" class="calls-th" data-col="duration" aria-haspopup="menu">Duration<span class="calls-th__ind"></span></button></th>
+                <th><button type="button" class="calls-th" data-col="contact" aria-haspopup="menu">Contact<span class="calls-th__ind"></span></button></th>
+                <th><button type="button" class="calls-th" data-col="result" aria-haspopup="menu">Highest step<span class="calls-th__ind"></span></button></th>
+                <th><button type="button" class="calls-th" data-col="outcomes" aria-haspopup="menu">Journey<span class="calls-th__ind"></span></button></th>
+                <th><button type="button" class="calls-th" data-col="channel" aria-haspopup="menu">Channel<span class="calls-th__ind"></span></button></th>
+              </tr>
+            </thead>
+            <tbody id="callsBody"></tbody>
+          </table>
+          <div id="callsColMenu" class="calls-col-menu" role="menu" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CALENDAR -->
+    <section class="panel" id="panel-calendar" role="tabpanel">
+      <div class="cal-header">
+        <div>
+          <div class="settings-section__label" style="margin-bottom:0.25rem">Rep walkthrough calendar</div>
+          <div class="cal-meta" id="calMeta">Loading…</div>
+        </div>
+        <div class="cal-header__actions">
+          <div class="cal-view-toggle" role="tablist" aria-label="Calendar view">
+            <button type="button" class="cal-view-toggle__btn is-active" data-cal-view="grid" role="tab">Month</button>
+            <button type="button" class="cal-view-toggle__btn" data-cal-view="week" role="tab">Week</button>
+            <button type="button" class="cal-view-toggle__btn" data-cal-view="list" role="tab">List</button>
+          </div>
+          <button class="btn btn--ghost" id="btnRefreshCalendar" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="card cal-shell">
+        <div class="card__body cal-body" id="calBody"></div>
+      </div>
+    </section>
+
+    <!-- KNOWLEDGE DATABASE -->
+    <section class="panel" id="panel-knowledge" role="tabpanel">
+
+      <!-- Sub-nav -->
+      <nav class="kb-subnav" role="tablist" aria-label="Knowledge sections">
+        <button class="kb-subnav__btn is-active" data-kb-tab="sources" role="tab">Sources</button>
+        <button class="kb-subnav__btn" data-kb-tab="search" role="tab">Test Search</button>
+        <button class="kb-subnav__btn" data-kb-tab="playbook" role="tab">Playbook</button>
+        <button class="kb-subnav__btn" data-kb-tab="ingest" role="tab">Add Knowledge</button>
+      </nav>
+
+      <!-- SOURCES -->
+      <div class="kb-panel" id="kb-panel-sources">
+        <div class="kb-toolbar">
+          <input type="search" class="kb-search-input" id="kbSourceFilter" placeholder="Filter by document ID…" autocomplete="off" />
+          <div class="kb-toolbar__meta" id="kbSourcesMeta">Loading…</div>
+        </div>
+        <div id="kbDocList" class="kb-doc-list"></div>
+
+        <!-- Doc preview drawer -->
+        <div class="kb-doc-preview" id="kbDocPreview" hidden>
+          <div class="kb-doc-preview__head">
+            <span id="kbPreviewTitle" class="kb-doc-preview__title"></span>
+            <button class="kb-doc-preview__close" id="kbClosePreview" type="button" aria-label="Close">✕</button>
+          </div>
+          <pre class="kb-doc-preview__body" id="kbPreviewBody"></pre>
+        </div>
+      </div>
+
+      <!-- TEST SEARCH -->
+      <div class="kb-panel" id="kb-panel-search" hidden>
+        <div class="card">
+          <div class="card__head">Test Retrieval</div>
+          <div class="card__body">
+            <p class="kb-hint">Enter a question to see exactly what the AI would retrieve — same BM25 search used during live calls.</p>
+            <div class="field-row">
+              <input type="text" class="kb-search-query" id="kbSearchQuery" placeholder="e.g. What CRMs does Hammer integrate with?" autocomplete="off" />
+              <button class="btn btn--primary" id="btnKbSearch" type="button">Search</button>
+            </div>
+            <div id="kbSearchResults" class="kb-search-results"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PLAYBOOK -->
+      <div class="kb-panel" id="kb-panel-playbook" hidden>
+        <div class="kb-playbook-header">
+          <div>
+            <div class="settings-section__label" style="margin-bottom:0.2rem">Learned Playbook</div>
+            <div class="kb-hint" id="kbPlaybookNote">Loading…</div>
+          </div>
+          <button class="btn btn--ghost" id="btnRefreshPlaybook" type="button">Refresh</button>
+        </div>
+        <div id="kbPlaybookList" class="kb-playbook-list"></div>
+        <div class="kb-empty" id="kbPlaybookEmpty" hidden>No playbook entries yet. Use <strong>Add Knowledge</strong> to create the first one.</div>
+      </div>
+
+      <!-- ADD KNOWLEDGE / INGEST -->
+      <div class="kb-panel" id="kb-panel-ingest" hidden>
+        <div class="card">
+          <div class="card__head">Add Knowledge Entry</div>
+          <div class="card__body">
+            <p class="kb-hint">Add a new section to the AI's playbook. On local dev this writes to <code>knowledge/playbook/approved.md</code> and takes effect immediately. On production, commit the file to make changes permanent.</p>
+            <div class="settings-section" style="padding:0;border:0">
+              <div class="settings-section__label">Entry Title</div>
+              <input type="text" class="kb-ingest-input" id="kbIngestTitle" placeholder="e.g. How we handle trade-ins" autocomplete="off" />
+            </div>
+            <div class="settings-section" style="padding:0;border:0;margin-top:1rem">
+              <div class="settings-section__label">Content (plain text or markdown)</div>
+              <textarea class="kb-ingest-textarea" id="kbIngestContent" placeholder="Describe the topic clearly — the AI will retrieve this when a relevant question comes up during a call."></textarea>
+            </div>
+            <div class="btn-row" style="margin-top:1rem">
+              <button class="btn btn--primary" id="btnKbIngest" type="button">Save to Playbook</button>
+            </div>
+            <div id="kbIngestMsg" class="kb-ingest-msg" hidden></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:1.5rem">
+          <div class="card__head">Upload Raw Source</div>
+          <div class="card__body">
+            <p class="kb-hint">Choose a file from your computer — PDF, Markdown (<code>.md</code>), or plain text (<code>.txt</code>). The server converts it to markdown and saves it under <code>raw/hammer-data/dashboard-uploads/</code>, the same raw corpus Hannah searches on live calls. Local dev only; commit the file to git for production.</p>
+            <div class="settings-section" style="padding:0;border:0">
+              <div class="settings-section__label">Document title (optional — for PDF/txt without a heading)</div>
+              <input type="text" class="kb-ingest-input" id="kbRawUploadTitle" placeholder="e.g. Trade-in policy" autocomplete="off" />
+            </div>
+            <div class="settings-section" style="padding:0;border:0;margin-top:1rem">
+              <div class="settings-section__label">File from your computer</div>
+              <input type="file" class="kb-ingest-file" id="kbRawUploadFile" accept=".pdf,.md,.markdown,.txt,.text,application/pdf,text/plain,text/markdown" />
+            </div>
+            <div class="btn-row" style="margin-top:1rem">
+              <button class="btn btn--primary" id="btnKbRawUpload" type="button">Upload &amp; Index</button>
+            </div>
+            <div id="kbRawUploadMsg" class="kb-ingest-msg" hidden></div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="panel" id="panel-settings" role="tabpanel">
+      <div class="settings-locked" id="settingsLocked">
+        <div class="settings-locked__inner">
+          <div class="settings-locked__icon" aria-hidden="true">🔒</div>
+          <h2>Protected settings</h2>
+          <p>Prompts, voice, and model configuration require the admin password each time you open this section.</p>
+        </div>
+      </div>
+      <div id="settingsContent" hidden>
+      <p class="settings-note" id="settingsNote" hidden></p>
+      <div class="settings-section">
+        <div class="settings-section__label">Voice · ElevenLabs</div>
+        <div class="field-row">
+          <select id="voiceSelect"><option value="">Loading voices…</option></select>
+          <button class="btn btn--primary" id="btnSaveVoice">Apply Voice</button>
+        </div>
+        <div class="voice-preview" id="voicePreview"></div>
+        <div class="settings-route" id="elevenlabsRoute" hidden></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section__label">LLM Model</div>
+        <div class="field-row">
+          <select id="modelSelect">
+            <option value="gpt-4o-mini">gpt-4o-mini</option>
+            <option value="gpt-4o">gpt-4o</option>
+            <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+            <option value="gpt-4.1">gpt-4.1</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section__label">Pen Challenge Prompt</div>
+        <textarea id="penPrompt" spellcheck="false"></textarea>
+        <div class="char-count" id="penCount"></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section__label">Hammer Sales Prompt</div>
+        <textarea id="hammerPrompt" spellcheck="false"></textarea>
+        <div class="char-count" id="hammerCount"></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section__label">Pen Close Prompt</div>
+        <textarea id="closePrompt" spellcheck="false"></textarea>
+        <div class="char-count" id="closeCount"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn--primary" id="btnSaveSettings">Save Settings</button>
+        <button class="btn btn--ghost" id="btnResetSettings">Reset to Defaults</button>
+      </div>
+      </div>
+    </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="call-modal" id="callModal" hidden aria-hidden="true">
+    <div class="call-modal__backdrop" id="callModalBackdrop"></div>
+    <div class="drawer call-modal__panel" id="callDrawer" role="dialog" aria-modal="true" aria-labelledby="drawerContact">
+      <div class="drawer__head">
+        <div>
+          <div class="drawer__contact" id="drawerContact">Call details</div>
+          <div class="drawer__meta" id="drawerMeta"></div>
+        </div>
+        <button class="btn btn--ghost" id="drawerClose" type="button" aria-label="Close">Close</button>
+      </div>
+      <div class="drawer__summary" id="drawerSummary" hidden></div>
+      <div class="drawer__body" id="drawerBody">
+        <div class="empty">Loading…</div>
+      </div>
+      <div class="drawer__footnote" id="drawerFootnote" hidden></div>
+    </div>
+  </div>
+
+  <div class="call-modal" id="calEventModal" hidden aria-hidden="true">
+    <div class="call-modal__backdrop" id="calEventModalBackdrop"></div>
+    <div class="drawer call-modal__panel" id="calEventDrawer" role="dialog" aria-modal="true" aria-labelledby="calEventTitle">
+      <div class="drawer__head">
+        <div>
+          <div class="drawer__contact" id="calEventTitle">Booking details</div>
+          <div class="drawer__meta" id="calEventMeta"></div>
+        </div>
+        <button class="btn btn--ghost" id="calEventClose" type="button" aria-label="Close">Close</button>
+      </div>
+      <div class="drawer__body" id="calEventBody">
+        <div class="empty">Loading…</div>
+      </div>
+      <div class="drawer__footnote" id="calEventFootnote" hidden></div>
+    </div>
+  </div>
+
+  <div class="settings-gate" id="settingsGate" hidden>
+    <div class="settings-gate__backdrop" id="settingsGateBackdrop"></div>
+    <div class="settings-gate__card login-card" role="dialog" aria-modal="true" aria-labelledby="settingsGateTitle">
+      <h2 id="settingsGateTitle">Confirm admin password</h2>
+      <p class="settings-gate__hint">Re-enter your password to view and edit voice AI settings.</p>
+      <form id="settingsGateForm" autocomplete="off">
+        <input type="password" id="settingsGatePassword" placeholder="Admin password" autocomplete="current-password" />
+        <p class="login-error" id="settingsGateError" hidden></p>
+        <div class="settings-gate__actions">
+          <button class="btn btn--ghost" type="button" id="btnSettingsGateCancel">Cancel</button>
+          <button class="btn btn--primary btn--red" type="submit" id="btnSettingsGateUnlock">Unlock settings</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    const IS_ADMIN = location.pathname.includes("/admin/voice");
+    const API = IS_ADMIN ? "/api/admin/voice" : "/api/debug/voice";
+    const TOKEN_KEY = "voice_admin_token";
+    let adminToken = "";
+    let settingsToken = "";
+    let settingsUnlocked = false;
+    let adminConfigured = false;
+
+    function getAdminToken() {
+      if (adminToken) return adminToken;
+      if (!IS_ADMIN) return settingsToken;
+      try {
+        return sessionStorage.getItem(TOKEN_KEY) || "";
+      } catch {
+        return "";
+      }
+    }
+
+    function setAdminToken(value) {
+      adminToken = value;
+      try {
+        if (value) sessionStorage.setItem(TOKEN_KEY, value);
+        else sessionStorage.removeItem(TOKEN_KEY);
+      } catch {
+        /* sessionStorage blocked — in-memory token still works for this tab */
+      }
+    }
+
+    function clearAdminToken() {
+      setAdminToken("");
+    }
+
+    function clearSettingsAccess() {
+      settingsToken = "";
+      settingsUnlocked = false;
+      voicesLoaded = false;
+      $("#penPrompt").value = "";
+      $("#hammerPrompt").value = "";
+      $("#closePrompt").value = "";
+      $("#settingsContent").hidden = true;
+      $("#settingsLocked").hidden = false;
+    }
+
+    function showSettingsGate() {
+      if (!adminConfigured) {
+        toast("Settings require REALTIME_SALES_ADMIN_SECRET on the server.");
+        return;
+      }
+      $("#settingsGatePassword").value = "";
+      setSettingsGateError("");
+      $("#settingsGate").hidden = false;
+      document.body.classList.add("modal-open");
+      setTimeout(() => $("#settingsGatePassword").focus(), 50);
+    }
+
+    function hideSettingsGate() {
+      $("#settingsGate").hidden = true;
+      if ($("#callModal").hidden && $("#calEventModal").hidden) {
+        document.body.classList.remove("modal-open");
+      }
+    }
+
+    function setSettingsGateError(msg) {
+      const err = $("#settingsGateError");
+      if (!err) return;
+      if (msg) {
+        err.textContent = msg;
+        err.hidden = false;
+      } else {
+        err.textContent = "";
+        err.hidden = true;
+      }
+    }
+
+    function setSettingsGateLoading(isLoading) {
+      const btn = $("#btnSettingsGateUnlock");
+      if (!btn) return;
+      btn.disabled = isLoading;
+      btn.textContent = isLoading ? "Checking…" : "Unlock settings";
+    }
+
+    async function verifySettingsPassword(password) {
+      const r = await fetch(API + "/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret: password }),
+      });
+      return r.ok;
+    }
+
+    async function trySettingsUnlock(password) {
+      const token = (password || "").trim();
+      if (!token) {
+        setSettingsGateError("Enter your password.");
+        return;
+      }
+      setSettingsGateError("");
+      setSettingsGateLoading(true);
+      try {
+        const ok = await verifySettingsPassword(token);
+        if (!ok) {
+          setSettingsGateError("Incorrect password.");
+          return;
+        }
+        if (!IS_ADMIN) settingsToken = token;
+        settingsUnlocked = true;
+        hideSettingsGate();
+        $("#settingsLocked").hidden = true;
+        $("#settingsContent").hidden = false;
+        activateTab("settings");
+        loadSettings();
+        loadVoices();
+      } catch (e) {
+        setSettingsGateError(e.message || "Could not verify password.");
+      } finally {
+        setSettingsGateLoading(false);
+      }
+    }
+
+    function formatApiError(err, fallback) {
+      if (!err || err.detail == null) return fallback;
+      if (typeof err.detail === "string") return err.detail;
+      if (Array.isArray(err.detail)) {
+        return err.detail.map((d) => d.msg || String(d)).join("; ");
+      }
+      return fallback;
+    }
+
+    function authHeaders(extra = {}, { settings = false } = {}) {
+      const headers = { ...extra };
+      const token = getAdminToken();
+      const allow = settings
+        ? Boolean(token && settingsUnlocked)
+        : Boolean(IS_ADMIN && token);
+      if (allow) {
+        headers.Authorization = `Bearer ${token}`;
+        headers["X-Admin-Secret"] = token;
+      }
+      return headers;
+    }
+
+    const api = (path, opts = {}) => {
+      const settingsPath = /^\/(settings|elevenlabs)/.test(path);
+      const headers = { ...authHeaders({}, { settings: settingsPath }), ...(opts.headers || {}) };
+      if (opts.body != null && !headers["Content-Type"]) {
+        headers["Content-Type"] = "application/json";
+      }
+      return fetch(API + path, {
+        ...opts,
+        headers,
+      }).then(async (r) => {
+        if (r.status === 401) {
+          const settingsPath = /^\/(settings|elevenlabs)/.test(path);
+          if (settingsPath && settingsUnlocked) {
+            clearSettingsAccess();
+            if (activeTabId === "settings") showSettingsGate();
+            throw new Error("Re-enter your password to access settings.");
+          }
+          if (IS_ADMIN) {
+            clearAdminToken();
+            showLogin();
+            throw new Error("Session expired — sign in again.");
+          }
+        }
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({ detail: r.statusText }));
+          throw new Error(formatApiError(err, r.statusText));
+        }
+        return r.json();
+      });
+    };
+
+    let voices = [];
+    let pollTimer = null;
+    let calPollTimer = null;
+    let voicesLoaded = false;
+    let promptsEditable = true;
+
+    function showLogin() {
+      $("#loginGate").classList.remove("is-hidden");
+      $("#appShell").style.visibility = "hidden";
+    }
+
+    function hideLogin() {
+      $("#loginGate").classList.add("is-hidden");
+      $("#appShell").style.visibility = "visible";
+      const err = $("#loginError");
+      if (err) {
+        err.hidden = true;
+        err.textContent = "";
+      }
+    }
+
+    function setLoginError(msg) {
+      const err = $("#loginError");
+      if (!err) return;
+      if (msg) {
+        err.textContent = msg;
+        err.hidden = false;
+      } else {
+        err.textContent = "";
+        err.hidden = true;
+      }
+    }
+
+    function setLoginLoading(isLoading) {
+      const btn = $("#btnLogin");
+      if (!btn) return;
+      btn.disabled = isLoading;
+      btn.textContent = isLoading ? "Signing in…" : "Enter";
+    }
+
+    async function validateAdminToken(token) {
+      const r = await fetch(API + "/overview", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Admin-Secret": token,
+        },
+      });
+      return r.ok;
+    }
+
+    async function tryLogin(password) {
+      const token = (password || "").trim();
+      if (!token) {
+        setLoginError("Enter your password.");
+        return;
+      }
+      setLoginError("");
+      setLoginLoading(true);
+      try {
+        const ok = await validateAdminToken(token);
+        if (!ok) {
+          setLoginError("Invalid password. Use Admin (capital A).");
+          return;
+        }
+        setAdminToken(token);
+        hideLogin();
+        bootDashboard();
+      } catch (e) {
+        setLoginError(e.message || "Could not sign in — check your connection and try again.");
+      } finally {
+        setLoginLoading(false);
+      }
+    }
+
+    function toast(msg) {
+      const el = $("#toast");
+      el.textContent = msg;
+      el.classList.add("is-visible");
+      setTimeout(() => el.classList.remove("is-visible"), 2800);
+    }
+
+    function fmtTime(iso) {
+      if (!iso) return "—";
+      try {
+        const d = new Date(iso.includes("T") ? iso : iso + "Z");
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      } catch { return iso.slice(11, 16) || iso; }
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return "—";
+      try {
+        const d = new Date(iso.includes("T") ? iso : iso + "Z");
+        return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + fmtTime(iso);
+      } catch { return iso; }
+    }
+
+    function channelLabel(channel) {
+      const ch = (channel || "voice").toLowerCase();
+      if (ch.includes("phone") || ch === "sip") return "Phone";
+      if (ch === "browser" || ch === "elevenlabs" || ch.startsWith("elevenlabs")) return "Browser";
+      if (ch === "voice") return "Voice";
+      return (channel || "voice").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    function contactLabel(values) {
+      return values.email || values.name || values.dealership_name || values.phone || "—";
+    }
+
+    function funnelPills(call) {
+      const pills = [];
+      if (call.agreement_email_sent || call.capture_lead_fired) pills.push('<span class="tag tag--email">email</span>');
+      if (call.i_approve_approved) pills.push('<span class="tag tag--approved">approved</span>');
+      if (call.account_created) pills.push('<span class="tag tag--closed">closed</span>');
+      if (call.pen_hammer_close_active) pills.push('<span class="tag tag--handoff">handoff</span>');
+      return pills.length ? pills.join("") : '<span class="tag tag--none">—</span>';
+    }
+
+    const OUTCOME_FILTERS = [
+      { id: "all", label: "All" },
+      { id: "email", label: "Email sent" },
+      { id: "approved", label: "Approved" },
+      { id: "closed", label: "Deal closed" },
+      { id: "handoff", label: "Handoff" },
+      { id: "converted", label: "Any conversion" },
+      { id: "none", label: "No conversion" },
+    ];
+
+    let allCalls = [];
+    let callsOutcomeFilter = "all";
+    let callsSearchQuery = "";
+    let callsOutcomeCounts = {};
+    let callsSort = { key: "time", dir: "desc" };
+    let callsColFilters = { result: "", outcomes: "", channel: "" };
+    let callsColMenuOpen = null;
+
+    const CALLS_COL_SORTS = {
+      time: [
+        { label: "Newest first", key: "time", dir: "desc" },
+        { label: "Oldest first", key: "time", dir: "asc" },
+      ],
+      duration: [
+        { label: "Longest first", key: "duration", dir: "desc" },
+        { label: "Shortest first", key: "duration", dir: "asc" },
+      ],
+      contact: [
+        { label: "A → Z", key: "contact", dir: "asc" },
+        { label: "Z → A", key: "contact", dir: "desc" },
+      ],
+      result: [
+        { label: "A → Z", key: "result", dir: "asc" },
+        { label: "Z → A", key: "result", dir: "desc" },
+      ],
+      outcomes: [
+        { label: "Most milestones", key: "outcomes", dir: "desc" },
+        { label: "Fewest milestones", key: "outcomes", dir: "asc" },
+      ],
+      channel: [
+        { label: "A → Z", key: "channel", dir: "asc" },
+        { label: "Z → A", key: "channel", dir: "desc" },
+      ],
+    };
+
+    const OUTCOME_MILESTONE_FILTERS = [
+      { id: "", label: "All outcomes" },
+      { id: "email", label: "Has email" },
+      { id: "approved", label: "Has approved" },
+      { id: "closed", label: "Has closed" },
+      { id: "handoff", label: "Has handoff" },
+      { id: "none", label: "No milestones" },
+    ];
+
+    function primaryOutcome(call) {
+      if (call.primary_outcome) return call.primary_outcome;
+      if (call.account_created) return { label: "Account created", slug: "closed" };
+      if (call.i_approve_approved) return { label: "I approve confirmed", slug: "approved" };
+      if (call.agreement_email_sent || call.capture_lead_fired) return { label: "Agreement emailed", slug: "email" };
+      if (call.pen_hammer_close_active) return { label: "Moved to Hammer", slug: "handoff" };
+      return { label: "No conversion", slug: "none" };
+    }
+
+    // Ordered funnel steps — returns HTML for the calls table "Journey" column
+    const FUNNEL_STEPS = [
+      { key: "pen_hammer_close_active", short: "Handoff", label: "Pen → Hammer" },
+      { key: "agreement_email_sent",    short: "Email",   label: "Agreement email sent", alt: "capture_lead_fired" },
+      { key: "i_approve_approved",      short: "I Approve", label: "I approve confirmed" },
+      { key: "account_created",         short: "Account", label: "Account created" },
+    ];
+
+    function funnelStepTrack(call) {
+      // Find the last completed step index
+      let lastDone = -1;
+      FUNNEL_STEPS.forEach((s, i) => {
+        if (call[s.key] || (s.alt && call[s.alt])) lastDone = i;
+      });
+
+      const parts = FUNNEL_STEPS.map((s, i) => {
+        const done = !!(call[s.key] || (s.alt && call[s.alt]));
+        const isLast = i === lastDone;
+        const cls = done
+          ? (isLast ? "step-node step-node--last" : "step-node step-node--done")
+          : "step-node step-node--pending";
+        const icon = done ? "✓" : "○";
+        return `<span class="${cls}" title="${escapeHtml(s.label)}">${icon} ${escapeHtml(s.short)}</span>`;
+      });
+
+      // Insert arrows between steps
+      const html = parts.reduce((acc, p, i) => {
+        if (i === 0) return p;
+        return acc + `<span class="step-arrow">›</span>` + p;
+      }, "");
+
+      return `<div class="step-track">${html}</div>`;
+    }
+
+    function outcomeTagClass(slug) {
+      return ({
+        closed: "tag--closed",
+        approved: "tag--approved",
+        email: "tag--email",
+        handoff: "tag--handoff",
+        none: "tag--none",
+      })[slug] || "tag--none";
+    }
+
+    function callMatchesOutcomeFilter(call, filt) {
+      if (!filt || filt === "all") return true;
+      if (filt === "email") return !!(call.agreement_email_sent || call.capture_lead_fired);
+      if (filt === "approved") return !!call.i_approve_approved;
+      if (filt === "closed") return !!call.account_created;
+      if (filt === "handoff") return !!call.pen_hammer_close_active;
+      if (filt === "converted") {
+        return !!(call.account_created || call.i_approve_approved || call.agreement_email_sent || call.capture_lead_fired);
+      }
+      if (filt === "none") {
+        return !callMatchesOutcomeFilter(call, "converted") && !call.pen_hammer_close_active;
+      }
+      return true;
+    }
+
+    function callSearchHaystack(call) {
+      const v = call.values || {};
+      return [
+        callHeadline(call),
+        v.email,
+        v.phone,
+        v.name,
+        v.dealership_name,
+        call.interaction_summary,
+        call.call_id,
+      ].filter(Boolean).join(" ").toLowerCase();
+    }
+
+    function callDurationSecs(call) {
+      const n = Number(call.duration_secs);
+      if (Number.isFinite(n) && n > 0) return n;
+      if (call.started_at && call.ended_at) {
+        try {
+          const a = new Date(call.started_at.includes("T") ? call.started_at : call.started_at + "Z");
+          const b = new Date(call.ended_at.includes("T") ? call.ended_at : call.ended_at + "Z");
+          const secs = Math.round((b - a) / 1000);
+          return secs > 0 ? secs : -1;
+        } catch { return -1; }
+      }
+      return -1;
+    }
+
+    function funnelMilestoneCount(call) {
+      let n = 0;
+      if (call.agreement_email_sent || call.capture_lead_fired) n++;
+      if (call.i_approve_approved) n++;
+      if (call.account_created) n++;
+      if (call.pen_hammer_close_active) n++;
+      return n;
+    }
+
+    function callMatchesColFilters(call) {
+      if (callsColFilters.result) {
+        if (primaryOutcome(call).slug !== callsColFilters.result) return false;
+      }
+      if (callsColFilters.channel) {
+        if (channelLabel(call.channel).toLowerCase() !== callsColFilters.channel.toLowerCase()) return false;
+      }
+      if (callsColFilters.outcomes) {
+        const f = callsColFilters.outcomes;
+        if (f === "none") {
+          if (funnelMilestoneCount(call) > 0) return false;
+        } else if (f === "email" && !(call.agreement_email_sent || call.capture_lead_fired)) return false;
+        else if (f === "approved" && !call.i_approve_approved) return false;
+        else if (f === "closed" && !call.account_created) return false;
+        else if (f === "handoff" && !call.pen_hammer_close_active) return false;
+      }
+      return true;
+    }
+
+    function sortCalls(calls) {
+      const { key, dir } = callsSort;
+      const mul = dir === "asc" ? 1 : -1;
+      return [...calls].sort((a, b) => {
+        let cmp = 0;
+        if (key === "time") {
+          const av = new Date(a.started_at || a.updated_at || 0).getTime();
+          const bv = new Date(b.started_at || b.updated_at || 0).getTime();
+          cmp = av - bv;
+        } else if (key === "duration") {
+          cmp = callDurationSecs(a) - callDurationSecs(b);
+        } else if (key === "contact") {
+          cmp = callHeadline(a).localeCompare(callHeadline(b), undefined, { sensitivity: "base" });
+        } else if (key === "result") {
+          cmp = primaryOutcome(a).label.localeCompare(primaryOutcome(b).label, undefined, { sensitivity: "base" });
+        } else if (key === "outcomes") {
+          cmp = funnelMilestoneCount(a) - funnelMilestoneCount(b);
+        } else if (key === "channel") {
+          cmp = channelLabel(a.channel).localeCompare(channelLabel(b.channel), undefined, { sensitivity: "base" });
+        }
+        return cmp * mul;
+      });
+    }
+
+    function filteredCalls() {
+      const q = callsSearchQuery.trim().toLowerCase();
+      const rows = allCalls.filter((call) => {
+        if (!callMatchesOutcomeFilter(call, callsOutcomeFilter)) return false;
+        if (!callMatchesColFilters(call)) return false;
+        if (q && !callSearchHaystack(call).includes(q)) return false;
+        return true;
+      });
+      return sortCalls(rows);
+    }
+
+    function uniqueResultFilters() {
+      const seen = new Map();
+      for (const call of allCalls) {
+        const o = primaryOutcome(call);
+        if (!seen.has(o.slug)) seen.set(o.slug, o.label);
+      }
+      return [{ id: "", label: "All results" }, ...[...seen.entries()].map(([id, label]) => ({ id, label }))];
+    }
+
+    function uniqueChannelFilters() {
+      const seen = new Set();
+      for (const call of allCalls) {
+        seen.add(channelLabel(call.channel));
+      }
+      return [{ id: "", label: "All channels" }, ...[...seen].sort().map((label) => ({ id: label, label }))];
+    }
+
+    function closeCallsColMenu() {
+      const menu = $("#callsColMenu");
+      menu.hidden = true;
+      menu.innerHTML = "";
+      callsColMenuOpen = null;
+    }
+
+    function updateCallsHeaderIndicators() {
+      document.querySelectorAll(".calls-th").forEach((btn) => {
+        const col = btn.dataset.col;
+        const ind = btn.querySelector(".calls-th__ind");
+        let text = "";
+        if (callsSort.key === col) text += callsSort.dir === "asc" ? " ↑" : " ↓";
+        const filterVal = callsColFilters[col];
+        if (filterVal) text += " ●";
+        ind.textContent = text;
+        btn.classList.toggle("is-sorted", callsSort.key === col);
+        btn.classList.toggle("is-filtered", !!filterVal);
+        btn.setAttribute("aria-sort", callsSort.key === col ? (callsSort.dir === "asc" ? "ascending" : "descending") : "none");
+      });
+    }
+
+    function openCallsColMenu(col, anchor) {
+      const menu = $("#callsColMenu");
+      const sorts = CALLS_COL_SORTS[col] || [];
+      let html = `<div class="calls-col-menu__label">Sort</div>`;
+      html += sorts.map((s) => {
+        const active = callsSort.key === s.key && callsSort.dir === s.dir;
+        return `<button type="button" class="calls-col-menu__item${active ? " is-active" : ""}" data-action="sort" data-sort-key="${s.key}" data-sort-dir="${s.dir}">${escapeHtml(s.label)}</button>`;
+      }).join("");
+
+      if (col === "result") {
+        html += `<div class="calls-col-menu__label">Filter</div>`;
+        html += uniqueResultFilters().map((f) => {
+          const active = callsColFilters.result === f.id;
+          return `<button type="button" class="calls-col-menu__item${active ? " is-active" : ""}" data-action="filter" data-filter-col="result" data-filter-val="${escapeHtml(f.id)}">${escapeHtml(f.label)}</button>`;
+        }).join("");
+      } else if (col === "outcomes") {
+        html += `<div class="calls-col-menu__label">Filter</div>`;
+        html += OUTCOME_MILESTONE_FILTERS.map((f) => {
+          const active = callsColFilters.outcomes === f.id;
+          return `<button type="button" class="calls-col-menu__item${active ? " is-active" : ""}" data-action="filter" data-filter-col="outcomes" data-filter-val="${escapeHtml(f.id)}">${escapeHtml(f.label)}</button>`;
+        }).join("");
+      } else if (col === "channel") {
+        html += `<div class="calls-col-menu__label">Filter</div>`;
+        html += uniqueChannelFilters().map((f) => {
+          const active = callsColFilters.channel === f.id;
+          return `<button type="button" class="calls-col-menu__item${active ? " is-active" : ""}" data-action="filter" data-filter-col="channel" data-filter-val="${escapeHtml(f.id)}">${escapeHtml(f.label)}</button>`;
+        }).join("");
+      }
+
+      menu.innerHTML = html;
+      const rect = anchor.getBoundingClientRect();
+      menu.style.left = Math.max(8, rect.left) + "px";
+      menu.style.top = (rect.bottom + 4) + "px";
+      menu.hidden = false;
+      callsColMenuOpen = col;
+
+      menu.querySelectorAll(".calls-col-menu__item").forEach((item) => {
+        item.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (item.dataset.action === "sort") {
+            callsSort = { key: item.dataset.sortKey, dir: item.dataset.sortDir };
+          } else if (item.dataset.action === "filter") {
+            callsColFilters[item.dataset.filterCol] = item.dataset.filterVal || "";
+          }
+          closeCallsColMenu();
+          updateCallsHeaderIndicators();
+          renderCallsTable();
+        });
+      });
+    }
+
+    function initCallsColumnMenus() {
+      document.querySelectorAll(".calls-th").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const col = btn.dataset.col;
+          if (callsColMenuOpen === col && !$("#callsColMenu").hidden) {
+            closeCallsColMenu();
+            return;
+          }
+          openCallsColMenu(col, btn);
+        });
+      });
+      document.addEventListener("click", () => closeCallsColMenu());
+      window.addEventListener("resize", () => closeCallsColMenu());
+    }
+
+    function renderCallsFilters() {
+      const el = $("#callsFilters");
+      el.innerHTML = OUTCOME_FILTERS.map((f) => {
+        const count = callsOutcomeCounts[f.id];
+        const countHtml = count != null ? `<span class="filter-pill__count">${count}</span>` : "";
+        return `<button type="button" class="filter-pill${callsOutcomeFilter === f.id ? " is-active" : ""}" data-filter="${f.id}">${f.label}${countHtml}</button>`;
+      }).join("");
+      el.querySelectorAll(".filter-pill").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          callsOutcomeFilter = btn.dataset.filter || "all";
+          renderCallsFilters();
+          renderCallsTable();
+        });
+      });
+    }
+
+    function renderCallsTable() {
+      const tbody = $("#callsBody");
+      const calls = filteredCalls();
+      $("#callsMeta").textContent = calls.length === allCalls.length
+        ? `${allCalls.length} call${allCalls.length === 1 ? "" : "s"}`
+        : `Showing ${calls.length} of ${allCalls.length} calls`;
+
+      if (!allCalls.length) {
+        tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No calls recorded yet.</div></td></tr>`;
+        return;
+      }
+      if (!calls.length) {
+        tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No calls match this filter.</div></td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = calls.map((c) => {
+        const outcome = primaryOutcome(c);
+        const summary = c.interaction_summary
+          ? `<div class="outcome-summary" title="${escapeHtml(c.interaction_summary)}">${escapeHtml(c.interaction_summary.slice(0, 90))}${c.interaction_summary.length > 90 ? "…" : ""}</div>`
+          : "";
+        return `
+          <tr data-call-id="${c.call_id}" class="${selectedCallId === c.call_id ? "is-selected" : ""}">
+            <td>${fmtDate(c.started_at || c.updated_at)}</td>
+            <td class="calls-table__duration">${escapeHtml(callDurationLabel(c))}</td>
+            <td>
+              <div>${escapeHtml(contactLabel(c.values || {}))}</div>
+              ${summary}
+            </td>
+            <td>
+              <span class="tag ${outcomeTagClass(outcome.slug)} outcome-primary">${escapeHtml(outcome.label)}</span>
+              ${c.account_url ? `
+                <div style="margin-top: 0.25rem;">
+                  <a href="${escapeHtml(c.account_url)}" target="_blank" class="table-account-link" style="font-size: 0.68rem; font-weight: 700; color: #3498db; text-decoration: underline; pointer-events: auto; display: inline-flex; align-items: center; gap: 0.2rem;" onclick="event.stopPropagation();">
+                    Open Account ↗
+                  </a>
+                </div>
+              ` : ""}
+            </td>
+            <td>${funnelStepTrack(c)}</td>
+            <td><span class="tag">${escapeHtml(channelLabel(c.channel))}</span></td>
+          </tr>
+        `;
+      }).join("");
+
+      tbody.querySelectorAll("tr[data-call-id]").forEach((row) => {
+        row.addEventListener("click", () => openCallDetail(row.dataset.callId, row));
+      });
+    }
+
+    const VALUE_LABELS = {
+      email: "Email",
+      phone: "Phone",
+      name: "Customer name",
+      display_name: "Customer name",
+      legal_name: "Legal name",
+      dealership_name: "Dealership",
+      selected_plan: "Plan",
+      product_interest: "Product interest",
+      lot_size: "Lot size",
+      seat_count: "Seats",
+      business_type: "Business type",
+      appointment_time: "Appointment",
+      appointment_link: "Appointment link",
+      voice_scenario: "Scenario",
+    };
+
+    // Required prospect fields always shown in the drawer (in this order)
+    const PROSPECT_REQUIRED = [
+      { key: "dealership_name", label: "Dealership" },
+      { key: "name",            label: "Customer name", alt: "display_name" },
+      { key: "phone",           label: "Phone" },
+      { key: "email",           label: "Email" },
+      { key: "lot_size",        label: "Lot size" },
+      { key: "product_interest", label: "Product interest" },
+    ];
+
+    let selectedCallId = null;
+
+    function fmtDuration(secs) {
+      if (secs == null || secs === "") return "";
+      const n = Number(secs);
+      if (!Number.isFinite(n) || n <= 0) return "";
+      const m = Math.floor(n / 60);
+      const s = Math.round(n % 60);
+      return m ? `${m}m ${s}s` : `${s}s`;
+    }
+
+    function fmtDurationFromRange(startIso, endIso) {
+      if (!startIso || !endIso) return "";
+      try {
+        const a = new Date(startIso.includes("T") ? startIso : startIso + "Z");
+        const b = new Date(endIso.includes("T") ? endIso : endIso + "Z");
+        const secs = Math.round((b - a) / 1000);
+        return secs > 0 ? fmtDuration(secs) : "";
+      } catch { return ""; }
+    }
+
+    function callDurationLabel(call) {
+      return fmtDuration(call.duration_secs) || fmtDurationFromRange(call.started_at, call.ended_at) || "—";
+    }
+
+    function callHeadline(call) {
+      const v = call.values || {};
+      return v.dealership_name || v.display_name || v.name || v.email || v.phone || call.call_id || "Unknown call";
+    }
+
+    function funnelMilestones(call) {
+      return [
+        { label: "Lead captured", done: call.capture_lead_fired },
+        { label: "Agreement email sent", done: call.agreement_email_sent },
+        { label: "I approve", done: call.i_approve_approved },
+        { label: "Account created", done: call.account_created },
+        { label: "Pen → Hammer handoff", done: call.pen_hammer_close_active },
+        { label: "Pen challenge skipped", done: call.pen_challenge_skipped },
+        { label: "Summary sent", done: call.summary_sent },
+      ];
+    }
+
+    function renderProspectDetails(values) {
+      const v = values || {};
+      const requiredKeys = new Set(PROSPECT_REQUIRED.flatMap((f) => [f.key, f.alt].filter(Boolean)));
+
+      // Always render the 6 required fields in fixed order, blank = "—"
+      const requiredRows = PROSPECT_REQUIRED.map(({ key, label, alt }) => {
+        const val = (v[key] || v[alt] || "").trim();
+        const cls = val ? "" : " prospect-field--empty";
+        return `<dt>${escapeHtml(label)}</dt><dd class="${cls}">${val ? escapeHtml(val) : "—"}</dd>`;
+      }).join("");
+
+      // Render Hammer Account row if present
+      let accountRow = "";
+      if (v.account_url) {
+        accountRow = `<dt>Hammer Account</dt><dd><a href="${escapeHtml(v.account_url)}" target="_blank" style="color: #3498db; font-weight: 700; text-decoration: underline;">Open Account ↗</a></dd>`;
+      }
+
+      // Any extra fields captured that aren't in the required set and aren't technical noise
+      const SKIP_KEYS = new Set(["display_name", "legal_name", "voice_scenario", "account_url"]);
+      const extras = Object.entries(v).filter(([key, val]) => {
+        if (!val || !String(val).trim()) return false;
+        if (requiredKeys.has(key) || SKIP_KEYS.has(key)) return false;
+        const k = key.toLowerCase();
+        if (k.includes("sip") || k.includes("twilio") || k.includes("callsid") || k.includes("accountsid")) return false;
+        return true;
+      });
+
+      const extraRows = extras.length
+        ? extras.map(([key, val]) =>
+            `<dt>${escapeHtml(VALUE_LABELS[key] || key.replace(/_/g, " "))}</dt><dd>${escapeHtml(String(val))}</dd>`
+          ).join("")
+        : "";
+
+      return `<dl class="detail-grid prospect-grid">${requiredRows}${accountRow}${extraRows}</dl>`;
+    }
+
+    function parseLogLine(line) {
+      const m = String(line || "").match(/^([^:]+):\s*(.+)$/);
+      if (!m) return { role: "log", message: line || "" };
+      const label = m[1].trim().toLowerCase();
+      const role = label.startsWith("visitor") || label === "user" ? "user"
+        : label.startsWith("agent") ? "agent" : "log";
+      return { role, message: m[2].trim() };
+    }
+
+    function renderTranscript(call) {
+      const turns = call.transcript || [];
+      if (turns.length) {
+        return turns.map((t, idx) => {
+          const role = t.role || "unknown";
+          const roleLabel = role === "user" ? "Visitor" : role === "agent" ? "Agent" : role;
+          const time = t.time_secs != null ? `<span class="transcript__time">${fmtDuration(t.time_secs)}</span>` : "";
+          
+          let latencyBadge = "";
+          if (role === "agent" || role === "assistant" || role === "system") {
+            // 1. Calculate turn transition delay from timestamps if available
+            let turnDelay = "";
+            let prevUserTime = null;
+            for (let i = idx - 1; i >= 0; i--) {
+              const r = turns[i].role || "unknown";
+              if ((r === "user" || r === "visitor") && turns[i].time_secs != null) {
+                prevUserTime = turns[i].time_secs;
+                break;
+              }
+            }
+            if (prevUserTime != null && t.time_secs != null) {
+              const diff = t.time_secs - prevUserTime;
+              if (diff >= 0) {
+                turnDelay = `${diff.toFixed(1)}s turn-around`;
+              }
+            }
+
+            // 2. Look up the server-side LLM latency event for this turn
+            let agentTurnIndex = 0;
+            for (let i = 0; i < idx; i++) {
+              const r = turns[i].role || "unknown";
+              if (r === "agent" || r === "assistant") {
+                agentTurnIndex++;
+              }
+            }
+
+            const sseEvents = (call.events || []).filter(e => 
+              e.event_type === "latency" && 
+              e.detail && 
+              (e.detail.phase === "first_sse" || e.detail.phase === "first_sse_opening")
+            );
+
+            let sseLatency = "";
+            let isFast = false;
+            let isSlow = false;
+            if (agentTurnIndex < sseEvents.length) {
+              const ms = sseEvents[agentTurnIndex].detail.elapsed_ms;
+              if (ms != null) {
+                sseLatency = `LLM: ${ms}ms`;
+                if (ms < 800) isFast = true;
+                else if (ms > 2000) isSlow = true;
+              }
+            }
+
+            if (sseLatency || turnDelay) {
+              const badgeParts = [];
+              if (sseLatency) {
+                badgeParts.push(sseLatency);
+              }
+              if (turnDelay) {
+                badgeParts.push(turnDelay);
+              }
+              const colorStyle = isFast 
+                ? "background-color: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3);" 
+                : isSlow 
+                ? "background-color: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.3);"
+                : "background-color: rgba(52, 152, 219, 0.15); color: #3498db; border: 1px solid rgba(52, 152, 219, 0.3);";
+              
+              latencyBadge = `<span class="transcript__latency-badge" style="display: inline-flex; align-items: center; font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: auto; ${colorStyle}">${badgeParts.join(" | ")}</span>`;
+            }
+          }
+
+          const tools = (t.tool_calls || []).length
+            ? `<div class="transcript__tools">${t.tool_calls.map((x) => escapeHtml(x)).join("<br>")}</div>`
+            : "";
+          const msg = t.message
+            ? `<div class="transcript__msg">${escapeHtml(t.message)}</div>`
+            : tools;
+          if (!msg && !tools) return "";
+          return `<div class="transcript__turn transcript__turn--${escapeHtml(role)}">
+            <div class="transcript__head" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="transcript__role">${escapeHtml(roleLabel)}</span>${time}
+              </div>
+              ${latencyBadge}
+            </div>
+            ${msg || ""}${t.message && tools ? tools : ""}
+          </div>`;
+        }).filter(Boolean).join("") || '<div class="empty" style="padding:1rem">No transcript available.</div>';
+      }
+      const log = call.session_log || [];
+      if (!log.length) {
+        return '<div class="empty" style="padding:1rem">No transcript available.</div>';
+      }
+      return log.map((line, idx) => {
+        const t = parseLogLine(line);
+        const roleLabel = t.role === "user" ? "Visitor" : t.role === "agent" ? "Agent" : "Log";
+        
+        let latencyBadge = "";
+        if (t.role === "agent") {
+          // Look up sequential latency event
+          let agentTurnIndex = 0;
+          for (let i = 0; i < idx; i++) {
+            const prevT = parseLogLine(log[i]);
+            if (prevT.role === "agent") {
+              agentTurnIndex++;
+            }
+          }
+          
+          const sseEvents = (call.events || []).filter(e => 
+            e.event_type === "latency" && 
+            e.detail && 
+            (e.detail.phase === "first_sse" || e.detail.phase === "first_sse_opening")
+          );
+
+          if (agentTurnIndex < sseEvents.length) {
+            const ms = sseEvents[agentTurnIndex].detail.elapsed_ms;
+            if (ms != null) {
+              const isFast = ms < 800;
+              const isSlow = ms > 2000;
+              const colorStyle = isFast 
+                ? "background-color: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3);" 
+                : isSlow 
+                ? "background-color: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.3);"
+                : "background-color: rgba(52, 152, 219, 0.15); color: #3498db; border: 1px solid rgba(52, 152, 219, 0.3);";
+              latencyBadge = `<span class="transcript__latency-badge" style="display: inline-flex; align-items: center; font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: auto; ${colorStyle}">LLM: ${ms}ms</span>`;
+            }
+          }
+        }
+        
+        return `<div class="transcript__turn transcript__turn--${escapeHtml(t.role)}">
+          <div class="transcript__head" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <span class="transcript__role">${roleLabel}</span>
+            ${latencyBadge}
+          </div>
+          <div class="transcript__msg">${escapeHtml(t.message)}</div>
+        </div>`;
+      }).join("");
+    }
+
+    function renderLatencyMetrics(events) {
+      if (!events?.length) return "";
+      const latencyEvents = events.filter((e) => e.event_type === "latency" && e.detail);
+      if (!latencyEvents.length) return "";
+
+      let firstSseOpening = null;
+      const firstSseValues = [];
+      const firstGptTokenValues = [];
+      const toolValues = {};
+
+      latencyEvents.forEach((e) => {
+        const phase = e.detail.phase || "";
+        const elapsed = e.detail.elapsed_ms;
+        if (elapsed == null) return;
+
+        if (phase === "first_sse_opening") {
+          firstSseOpening = elapsed;
+        } else if (phase === "first_sse") {
+          firstSseValues.push(elapsed);
+        } else if (phase === "first_gpt_token") {
+          firstGptTokenValues.push(elapsed);
+        } else if (phase.startsWith("tool_")) {
+          const toolName = phase.substring(5);
+          if (!toolValues[toolName]) {
+            toolValues[toolName] = [];
+          }
+          toolValues[toolName].push(elapsed);
+        }
+      });
+
+      const avg = (arr) => arr.length ? Math.round(arr.reduce((sum, val) => sum + val, 0) / arr.length) : null;
+
+      const avgFirstSse = avg(firstSseValues);
+      const avgFirstGptToken = avg(firstGptTokenValues);
+
+      const items = [];
+      if (firstSseOpening != null) {
+        items.push({ label: "Greeting pickup", value: `${firstSseOpening}ms`, desc: "First response speed" });
+      }
+      if (avgFirstSse != null) {
+        items.push({ label: "Avg reply latency", value: `${avgFirstSse}ms`, desc: "Turn-around delay", highlight: avgFirstSse < 800 });
+      }
+      if (avgFirstGptToken != null) {
+        items.push({ label: "Avg LLM generation", value: `${avgFirstGptToken}ms`, desc: "GPT-4o-mini generation" });
+      }
+
+      // Compute tool averages
+      Object.entries(toolValues).forEach(([toolName, vals]) => {
+        const toolAvg = avg(vals);
+        if (toolAvg != null) {
+          items.push({ label: `${toolName.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())} tool`, value: `${toolAvg}ms`, desc: "Tool execution speed" });
+        }
+      });
+
+      if (!items.length) return "";
+
+      const cardsHtml = items.map((item) => {
+        const borderCls = item.highlight ? "style='border-left: 3px solid var(--green);'" : "";
+        return `
+          <div class="latency-card" ${borderCls} style="background: var(--bg); padding: 0.5rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--border-light); display: flex; flex-direction: column; gap: 0.15rem;">
+            <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">${escapeHtml(item.label)}</div>
+            <div style="font-size: 1.15rem; font-weight: 700; color: ${item.highlight ? "var(--green)" : "var(--text)"};">${escapeHtml(item.value)}</div>
+            <div style="font-size: 0.7rem; color: var(--text-muted);">${escapeHtml(item.desc)}</div>
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div class="drawer__section">
+          <div class="drawer__section-label">Voice performance (latency)</div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.5rem; margin-bottom: 0.5rem;">
+            ${cardsHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderEventLog(events) {
+      if (!events?.length) return "";
+      const sorted = [...events].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+      return sorted.map((e) => {
+        let detail = "";
+        if (e.event_type === "tool") {
+          detail = `${e.detail?.tool || "tool"}${e.detail?.elapsed_ms != null ? " · " + e.detail.elapsed_ms + "ms" : ""}`;
+        } else if (e.event_type === "latency") {
+          detail = `${e.detail?.phase || ""}${e.detail?.elapsed_ms != null ? " · " + e.detail.elapsed_ms + "ms" : ""}`;
+        } else {
+          detail = JSON.stringify(e.detail || {});
+        }
+        return `<div class="event-log__item">
+          <span class="feed-item__time">${fmtTime(e.created_at)}</span>
+          <span class="feed-item__type">${escapeHtml(e.event_type)}</span>
+          <span class="feed-item__detail">${escapeHtml(detail)}</span>
+        </div>`;
+      }).join("");
+    }
+
+    function openCallModal() {
+      closeCalEventModal();
+      const modal = $("#callModal");
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+    }
+
+    function closeCallDrawer() {
+      selectedCallId = null;
+      const modal = $("#callModal");
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      if ($("#calEventModal").hidden) document.body.classList.remove("modal-open");
+      $("#callDrawer").classList.remove("is-loading");
+      $("#callsBody").querySelectorAll("tr.is-selected").forEach((r) => r.classList.remove("is-selected"));
+    }
+
+    function renderCallDetail(call) {
+      const drawer = $("#callDrawer");
+      drawer.classList.remove("is-loading");
+      openCallModal();
+
+      const v = call.values || {};
+      $("#drawerContact").textContent = callHeadline(call);
+
+      const duration = fmtDuration(call.duration_secs) || fmtDurationFromRange(call.started_at, call.ended_at);
+      const metaParts = [
+        fmtDate(call.started_at || call.updated_at),
+        channelLabel(call.channel),
+        call.call_direction || null,
+        duration ? duration + " duration" : null,
+        call.status || null,
+        call.call_successful === true ? "successful" : call.call_successful === false ? "unsuccessful" : null,
+      ].filter(Boolean);
+      $("#drawerMeta").textContent = metaParts.join(" · ");
+
+      const summaryEl = $("#drawerSummary");
+      if (call.interaction_summary) {
+        summaryEl.textContent = call.interaction_summary;
+        summaryEl.hidden = false;
+      } else {
+        summaryEl.hidden = true;
+      }
+
+      const eventsHtml = renderEventLog(call.events);
+
+      // Build ordered step timeline for the drawer
+      const stepTimelineHtml = (() => {
+        const steps = [
+          { key: "pen_hammer_close_active", label: "Pen → Hammer handoff",    desc: "Visitor passed the pen challenge and was introduced to Hammer" },
+          { key: "agreement_email_sent",    label: "Agreement email sent",     desc: "The Hammer premise agreement was emailed to the visitor", alt: "capture_lead_fired" },
+          { key: "i_approve_approved",      label: "\"I approve\" confirmed",  desc: "Visitor replied with the approval phrase on the agreement email" },
+          { key: "account_created",         label: "Hammer account created",   desc: "A Hammer Office account was successfully created for the visitor" },
+        ];
+        let lastDoneIdx = -1;
+        steps.forEach((s, i) => { if (call[s.key] || (s.alt && call[s.alt])) lastDoneIdx = i; });
+        const noActivity = lastDoneIdx === -1;
+        return steps.map((s, i) => {
+          const done = !!(call[s.key] || (s.alt && call[s.alt]));
+          const isLast = i === lastDoneIdx;
+          const cls = done ? (isLast ? "step-tl__item step-tl__item--last" : "step-tl__item step-tl__item--done")
+                           : "step-tl__item step-tl__item--pending";
+          const icon = done ? (isLast ? "★" : "✓") : "○";
+          return `<div class="${cls}">
+            <div class="step-tl__icon">${icon}</div>
+            <div class="step-tl__body">
+              <div class="step-tl__label">${escapeHtml(s.label)}${isLast ? ' <span class="step-tl__badge">Last step reached</span>' : ""}</div>
+              <div class="step-tl__desc">
+                ${escapeHtml(s.desc)}
+                ${s.key === "account_created" && done && call.account_url ? `
+                  <div style="margin-top: 0.4rem;">
+                    <a href="${escapeHtml(call.account_url)}" target="_blank" class="drawer-timeline-account-link" style="display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.72rem; font-weight: 700; color: #3498db; text-decoration: none; background: rgba(52, 152, 219, 0.1); padding: 0.25rem 0.5rem; border-radius: 4px; border: 1px solid rgba(52, 152, 219, 0.3); transition: all 0.2s;">
+                      Open Hammer Account ↗
+                    </a>
+                  </div>
+                ` : ""}
+              </div>
+            </div>
+          </div>`;
+        }).join("") + (noActivity
+          ? `<div class="step-tl__item step-tl__item--pending"><div class="step-tl__icon">—</div><div class="step-tl__body"><div class="step-tl__label">No funnel steps detected</div><div class="step-tl__desc">The call did not reach any recorded milestone.</div></div></div>`
+          : "");
+      })();
+
+      $("#drawerBody").innerHTML = `
+        <div class="drawer__section">
+          <div class="drawer__section-label">Call journey</div>
+          <div class="step-tl">${stepTimelineHtml}</div>
+        </div>
+        ${renderLatencyMetrics(call.events)}
+        <div class="drawer__section">
+          <div class="drawer__section-label">Prospect details</div>
+          ${renderProspectDetails(v)}
+        </div>
+        <div class="drawer__section">
+          <div class="drawer__section-label">Transcript</div>
+          <div class="transcript">${renderTranscript(call)}</div>
+        </div>
+        ${eventsHtml ? `<div class="drawer__section">
+          <div class="drawer__section-label">System events</div>
+          <div class="event-log">${eventsHtml}</div>
+        </div>` : ""}
+      `;
+
+      const foot = $("#drawerFootnote");
+      foot.textContent = `Call ID: ${call.call_id || "—"} · Source: ${call.source || "local"}`;
+      foot.hidden = !call.call_id;
+    }
+
+    function renderStats(data) {
+      const f = data.funnel || {};
+      const t = data.funnel_today || {};
+      const active = (data.active_sessions || []).length;
+      $("#statGrid").innerHTML = [
+        { label: "Active Now", value: active, accent: active > 0, sub: active ? "in progress" : "idle" },
+        { label: "Today", value: t.calls_total ?? 0, sub: "calls (Central)" },
+        { label: "7 Days", value: f.calls_total ?? 0, sub: "calls" },
+        { label: "Agreements", value: f.agreement_emails ?? 0, sub: "emails sent" },
+        { label: "Approved", value: f.approvals ?? 0, sub: "I approve" },
+        { label: "Accounts", value: f.accounts_created ?? 0, sub: "created" },
+      ].map((s) => `
+        <div class="stat${s.accent ? " stat--accent" : ""}">
+          <div class="stat__label">${s.label}</div>
+          <div class="stat__value">${s.value}</div>
+          <div class="stat__sub">${s.sub}</div>
+        </div>
+      `).join("");
+
+      const dot = $("#liveDot");
+      const label = $("#liveLabel");
+      if (active > 0) {
+        dot.classList.remove("is-idle");
+        label.textContent = `${active} live`;
+      } else {
+        dot.classList.add("is-idle");
+        label.textContent = "Idle";
+      }
+    }
+
+    function renderLiveCalls(liveCalls) {
+      const card = $("#liveCallCard");
+      const transcriptEl = $("#liveCallTranscript");
+      const metaEl = $("#liveCallMeta");
+      const calls = liveCalls || [];
+      if (!calls.length) {
+        card.hidden = true;
+        return;
+      }
+      card.hidden = false;
+      const call = calls[0];
+      const contact = callHeadline({ values: call.values || {}, call_id: call.call_id });
+      const scenario = call.scenario ? call.scenario.replace(/_/g, " ") : "";
+      const parts = [
+        contact !== call.call_id ? contact : null,
+        channelLabel(call.channel),
+        scenario || null,
+        fmtTime(call.started_at),
+      ].filter(Boolean);
+      metaEl.textContent = parts.join(" · ");
+      if (calls.length > 1) {
+        metaEl.textContent += ` · +${calls.length - 1} more`;
+      }
+      const html = renderTranscript(call);
+      const shouldStick = transcriptEl.scrollTop + transcriptEl.clientHeight >= transcriptEl.scrollHeight - 48;
+      transcriptEl.innerHTML = html;
+      if (shouldStick) {
+        transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      }
+    }
+
+    function renderActivity(events) {
+      const el = $("#activityFeed");
+      if (!events?.length) {
+        el.innerHTML = '<div class="empty">No activity yet — start a voice call to see what Hannah is doing.</div>';
+        return;
+      }
+      el.innerHTML = events.map((e) => {
+        const act = e.activity || {};
+        const category = act.category || e.event_type || "Activity";
+        const title = act.title || category;
+        const subtitle = act.subtitle || "";
+        const tone = act.tone || "neutral";
+        return `<article class="feed-item feed-item--${tone}">
+          <div class="feed-item__head">
+            <span class="feed-item__badge feed-item__badge--${tone}">${escapeHtml(category)}</span>
+            <time class="feed-item__time">${fmtTime(e.created_at)}</time>
+          </div>
+          <p class="feed-item__title">${escapeHtml(title)}</p>
+          ${subtitle ? `<p class="feed-item__meta">${escapeHtml(subtitle)}</p>` : ""}
+        </article>`;
+      }).join("");
+    }
+
+    function renderChannels(channels) {
+      const el = $("#channelBreakdown");
+      const entries = Object.entries(channels || {});
+      if (!entries.length) {
+        el.innerHTML = '<div class="empty">No channel data yet.</div>';
+        return;
+      }
+      el.innerHTML = `<div class="channel-bar">${entries.map(([k, v]) =>
+        `<span class="channel-chip">${escapeHtml(channelLabel(k))} · ${v}</span>`
+      ).join("")}</div>`;
+    }
+
+    async function refreshOverview() {
+      try {
+        const data = await api("/overview");
+        renderStats(data);
+        renderLiveCalls(data.live_calls);
+        renderActivity(data.recent_events);
+        renderChannels(data.funnel?.channels);
+        if (data.environment) {
+          $("#envBadge").textContent = data.environment === "production" ? "live" : "local";
+        }
+        if (typeof data.admin_configured === "boolean") {
+          adminConfigured = data.admin_configured;
+        }
+      } catch (e) {
+        if (!IS_ADMIN || getAdminToken()) {
+          $("#liveLabel").textContent = "Offline";
+          $("#liveDot").classList.add("is-idle");
+        }
+      }
+    }
+
+    async function loadCalls() {
+      const tbody = $("#callsBody");
+      tbody.innerHTML = `<tr><td colspan="6"><div class="empty">Loading calls and journey data…</div></td></tr>`;
+      try {
+        const data = await api(`/calls?limit=50`);
+        allCalls = data.calls || [];
+        callsOutcomeCounts = data.outcome_counts || {};
+        renderCallsFilters();
+        renderCallsTable();
+        updateCallsHeaderIndicators();
+      } catch (e) {
+        allCalls = [];
+        tbody.innerHTML = `<tr><td colspan="6"><div class="empty">${escapeHtml(e.message)}</div></td></tr>`;
+        $("#callsMeta").textContent = "Failed to load";
+      }
+    }
+
+    async function openCallDetail(callId, row) {
+      selectedCallId = callId;
+      $("#callsBody").querySelectorAll("tr.is-selected").forEach((r) => r.classList.remove("is-selected"));
+      if (row) row.classList.add("is-selected");
+
+      const drawer = $("#callDrawer");
+      drawer.classList.add("is-loading");
+      openCallModal();
+      $("#drawerContact").textContent = "Loading call…";
+      $("#drawerMeta").textContent = "";
+      $("#drawerSummary").hidden = true;
+      $("#drawerBody").innerHTML = '<div class="empty">Loading full call log…</div>';
+      $("#drawerFootnote").hidden = true;
+
+      try {
+        const { call } = await api(`/calls/${encodeURIComponent(callId)}`);
+        renderCallDetail(call);
+        // Patch the in-memory allCalls entry so the table shows corrected outcomes
+        // immediately (the server also persisted the enriched flags to the DB).
+        const idx = allCalls.findIndex((c) => c.call_id === callId);
+        if (idx !== -1) {
+          allCalls[idx] = { ...allCalls[idx], ...call };
+        }
+        // Live-patch the outcome cell in the table row without a full re-render.
+        const tr = document.querySelector(`#callsBody tr[data-call-id="${CSS.escape(callId)}"]`);
+        if (tr) {
+          const outcome = primaryOutcome(call);
+          const cells = tr.querySelectorAll("td");
+          if (cells[3]) cells[3].innerHTML = `<span class="tag ${outcomeTagClass(outcome.slug)} outcome-primary">${escapeHtml(outcome.label)}</span>`;
+          if (cells[4]) cells[4].innerHTML = funnelStepTrack(call);
+        }
+      } catch (e) {
+        drawer.classList.remove("is-loading");
+        $("#drawerBody").innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
+        toast(e.message);
+      }
+    }
+
+    function bindCharCount(textarea, counter) {
+      const update = () => { counter.textContent = `${textarea.value.length.toLocaleString()} chars`; };
+      textarea.addEventListener("input", update);
+      update();
+    }
+
+    async function loadSettings() {
+      try {
+        const data = await api("/settings");
+        const eff = data.effective || {};
+        promptsEditable = data.prompts_editable !== false;
+        $("#penPrompt").value = eff.pen_prompt || "";
+        $("#hammerPrompt").value = eff.hammer_prompt || "";
+        $("#closePrompt").value = eff.pen_close_prompt || "";
+        $("#penPrompt").disabled = !promptsEditable;
+        $("#hammerPrompt").disabled = !promptsEditable;
+        $("#closePrompt").disabled = !promptsEditable;
+        $("#btnSaveSettings").disabled = !promptsEditable;
+        $("#btnResetSettings").disabled = false;  // Reset is always available — lets admin wipe stale overrides anywhere
+        const note = $("#settingsNote");
+        if (data.prompts_note) {
+          note.textContent = data.prompts_note;
+          note.hidden = false;
+        } else {
+          note.hidden = true;
+        }
+        const model = eff.chat_model || "gpt-4o-mini";
+        $("#modelSelect").value = model;
+        bindCharCount($("#penPrompt"), $("#penCount"));
+        bindCharCount($("#hammerPrompt"), $("#hammerCount"));
+        bindCharCount($("#closePrompt"), $("#closeCount"));
+      } catch (e) {
+        toast("Settings: " + e.message);
+      }
+    }
+
+    async function loadVoices() {
+      if (voicesLoaded) return;
+      try {
+        const [{ voices: list }, { agent }] = await Promise.all([
+          api("/elevenlabs/voices"),
+          api("/elevenlabs/agent"),
+        ]);
+        voices = list || [];
+        const sel = $("#voiceSelect");
+        sel.innerHTML = voices.map((v) =>
+          `<option value="${v.voice_id}" data-preview="${v.preview_url || ""}">${v.name}${v.category ? " · " + v.category : ""}</option>`
+        ).join("");
+        if (agent?.voice_id) sel.value = agent.voice_id;
+        renderElevenLabsRoute(agent);
+        sel.addEventListener("change", updateVoicePreview);
+        updateVoicePreview();
+        voicesLoaded = true;
+      } catch (e) {
+        $("#voiceSelect").innerHTML = `<option value="">ElevenLabs not configured</option>`;
+        renderElevenLabsRoute(null);
+      }
+    }
+
+    function renderElevenLabsRoute(agent) {
+      const box = $("#elevenlabsRoute");
+      if (!box) return;
+      if (!agent) {
+        box.hidden = true;
+        box.innerHTML = "";
+        return;
+      }
+      const llm = agent.llm || "unknown";
+      const url = agent.custom_llm_url || "";
+      const isCustom = llm === "custom-llm";
+      const isVercel = /hammer-finalsite\.vercel\.app\/api\/elevenlabs/i.test(url);
+      const promptClean = !agent.dashboard_prompt_length && !agent.dashboard_tools_count && !agent.dashboard_tool_ids_count;
+      const ok = isCustom && isVercel && promptClean;
+      const status = ok ? "Connected to GitHub/Vercel prompts" : "Check ElevenLabs routing";
+      box.hidden = false;
+      box.className = `settings-route ${ok ? "settings-route--ok" : "settings-route--warn"}`;
+      box.innerHTML = `
+        <div class="settings-route__status">${escapeHtml(status)}</div>
+        <div class="settings-route__line"><strong>LLM:</strong> ${escapeHtml(llm)}</div>
+        <div class="settings-route__line"><strong>Custom LLM URL:</strong> ${escapeHtml(url || "not set")}</div>
+        <div class="settings-route__line"><strong>Dashboard prompt chars:</strong> ${Number(agent.dashboard_prompt_length || 0).toLocaleString()}</div>
+      `;
+    }
+
+    function updateVoicePreview() {
+      const sel = $("#voiceSelect");
+      const opt = sel.selectedOptions[0];
+      const url = opt?.dataset?.preview;
+      $("#voicePreview").innerHTML = url
+        ? `<audio controls src="${url}"></audio>`
+        : "";
+    }
+
+    async function saveVoice() {
+      const voice_id = $("#voiceSelect").value;
+      if (!voice_id) return toast("Select a voice first");
+      try {
+        await api("/elevenlabs/agent", {
+          method: "PATCH",
+          body: JSON.stringify({ voice_id }),
+        });
+        toast("Voice updated");
+      } catch (e) {
+        toast(e.message);
+      }
+    }
+
+    async function saveSettings() {
+      try {
+        await api("/settings", {
+          method: "PATCH",
+          body: JSON.stringify({
+            pen_prompt: $("#penPrompt").value,
+            hammer_prompt: $("#hammerPrompt").value,
+            pen_close_prompt: $("#closePrompt").value,
+            chat_model: $("#modelSelect").value,
+          }),
+        });
+        toast("Settings saved");
+      } catch (e) {
+        toast(e.message);
+      }
+    }
+
+    async function resetSettings() {
+      if (!confirm("Reset all prompt and model overrides to file defaults?")) return;
+      try {
+        await api("/settings/reset", { method: "POST" });
+        await loadSettings();
+        toast("Defaults restored");
+      } catch (e) {
+        toast(e.message);
+      }
+    }
+
+    function calDayKey(iso, tz) {
+      if (!iso) return "Unknown";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", timeZone: tz || undefined });
+      } catch {
+        return iso.slice(0, 10);
+      }
+    }
+
+    function calTimeLabel(ev, tz) {
+      if (ev.all_day) return "All day";
+      if (!ev.start) return "—";
+      try {
+        const d = new Date(ev.start);
+        return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: tz || undefined });
+      } catch {
+        return ev.start.slice(11, 16);
+      }
+    }
+
+    function calTzAbbrev(tz) {
+      if (!tz) return "";
+      try {
+        const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "short" }).formatToParts(new Date());
+        return parts.find((p) => p.type === "timeZoneName")?.value || tz;
+      } catch {
+        return tz;
+      }
+    }
+
+    function calTimeRangeLabel(ev, tz) {
+      if (ev.all_day) return "All day";
+      if (!ev.start) return "—";
+      try {
+        const start = new Date(ev.start);
+        const startStr = start.toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+          timeZone: tz || undefined,
+        });
+        if (!ev.end) return startStr;
+        const end = new Date(ev.end);
+        if (Number.isNaN(end.getTime()) || end <= start) return startStr;
+        const endStr = end.toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+          timeZone: tz || undefined,
+        });
+        return `${startStr} – ${endStr}`;
+      } catch {
+        return calTimeLabel(ev, tz);
+      }
+    }
+
+    function calEventColor(ev, index) {
+      const summary = (ev.summary || "").toLowerCase();
+      if (summary.includes("walkthrough") || summary.includes("hammer")) return "hammer";
+      const colors = ["hammer", "rose", "slate", "amber", "teal", "ink"];
+      return colors[(index + summary.length) % colors.length];
+    }
+
+    function renderGridEvent(ev, tz, color) {
+      const time = calTimeRangeLabel(ev, tz);
+      const title = ev.summary || "(No title)";
+      const tooltip = `${time} · ${title}`;
+      const inner = `<span class="cal-grid__event-time">${escapeHtml(time)}</span><span class="cal-grid__event-title">${escapeHtml(title)}</span>`;
+      const cls = `cal-grid__event cal-grid__event--${color}`;
+      const key = calEventKey(ev);
+      return `<button type="button" class="${cls}" data-cal-event-id="${escapeHtml(key)}" title="${escapeHtml(tooltip)}">${inner}</button>`;
+    }
+
+    function isToday(iso, tz) {
+      if (!iso) return false;
+      try {
+        const d = new Date(iso);
+        const now = new Date();
+        return d.toLocaleDateString([], { timeZone: tz || undefined }) === now.toLocaleDateString([], { timeZone: tz || undefined });
+      } catch {
+        return false;
+      }
+    }
+
+    let calendarData = null;
+    let calViewMode = "grid";
+    let calMonthAnchor = null;
+    let calWeekAnchor = null;
+    let calEventsById = {};
+
+    function partsToIsoKey(parts) {
+      return `${parts.year}-${String(parts.month + 1).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+    }
+
+    function isoKeyToParts(key) {
+      const [y, m, d] = key.split("-").map(Number);
+      return { year: y, month: m - 1, day: d };
+    }
+
+    function addDaysParts(parts, days) {
+      const d = new Date(Date.UTC(parts.year, parts.month, parts.day + days, 12));
+      return { year: d.getUTCFullYear(), month: d.getUTCMonth(), day: d.getUTCDate() };
+    }
+
+    function weekStartParts(anchor) {
+      const dow = new Date(Date.UTC(anchor.year, anchor.month, anchor.day, 12)).getUTCDay();
+      return addDaysParts(anchor, -dow);
+    }
+
+    function buildWeekDays(anchor) {
+      const start = weekStartParts(anchor);
+      const days = [];
+      let cur = start;
+      for (let i = 0; i < 7; i++) {
+        days.push({ ...cur, key: partsToIsoKey(cur) });
+        cur = addDaysParts(cur, 1);
+      }
+      return days;
+    }
+
+    function weekRangeTitle(weekDays, tz) {
+      if (!weekDays.length) return "This week";
+      const start = weekDays[0];
+      const end = weekDays[6];
+      const startDate = new Date(Date.UTC(start.year, start.month, start.day, 12));
+      const endDate = new Date(Date.UTC(end.year, end.month, end.day, 12));
+      const sameMonth = start.month === end.month && start.year === end.year;
+      const sameYear = start.year === end.year;
+      const startStr = startDate.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        year: sameYear ? undefined : "numeric",
+        timeZone: tz || undefined,
+      });
+      const endStr = endDate.toLocaleDateString([], {
+        month: sameMonth ? undefined : "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: tz || undefined,
+      });
+      return `${startStr} – ${endStr}`;
+    }
+
+    function dayHeaderParts(parts, tz, today) {
+      const d = new Date(Date.UTC(parts.year, parts.month, parts.day, 12));
+      return {
+        dow: d.toLocaleDateString([], { weekday: "short", timeZone: tz || undefined }),
+        dayNum: parts.day,
+        isToday: parts.year === today.year && parts.month === today.month && parts.day === today.day,
+      };
+    }
+
+    function renderWeekEvent(ev, tz, color) {
+      const time = calTimeRangeLabel(ev, tz);
+      const title = ev.summary || "(No title)";
+      const key = calEventKey(ev);
+      return `<button type="button" class="cal-week__event cal-week__event--${color}" data-cal-event-id="${escapeHtml(key)}" title="${escapeHtml(time + " · " + title)}">
+        <span class="cal-week__event-time">${escapeHtml(time)}</span>
+        <span class="cal-week__event-title">${escapeHtml(title)}</span>
+      </button>`;
+    }
+
+    function calEventKey(ev) {
+      return ev.id || `${ev.start || ""}|${ev.summary || ""}`;
+    }
+
+    function indexCalendarEvents(events) {
+      calEventsById = {};
+      for (const ev of events || []) {
+        calEventsById[calEventKey(ev)] = ev;
+      }
+    }
+
+    function calDateLabel(iso, tz) {
+      if (!iso) return "—";
+      try {
+        return new Date(iso).toLocaleDateString([], {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          timeZone: tz || undefined,
+        });
+      } catch {
+        return iso.slice(0, 10);
+      }
+    }
+
+    function openCalEventModal() {
+      closeCallDrawer();
+      const modal = $("#calEventModal");
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+    }
+
+    function closeCalEventModal() {
+      const modal = $("#calEventModal");
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      if ($("#callModal").hidden) document.body.classList.remove("modal-open");
+    }
+
+    function renderCalEventDetail(ev) {
+      const tz = calendarData?.timezone || undefined;
+      const tzAbbrev = calTzAbbrev(tz);
+      $("#calEventTitle").textContent = ev.summary || "(No title)";
+      $("#calEventMeta").textContent = [
+        calDateLabel(ev.start, tz),
+        calTimeRangeLabel(ev, tz),
+        tzAbbrev || null,
+      ].filter(Boolean).join(" · ");
+
+      const rows = [
+        ["When", `${calDateLabel(ev.start, tz)} · ${calTimeRangeLabel(ev, tz)}${tzAbbrev ? ` (${tzAbbrev})` : ""}`],
+        ["Calendar", calendarData?.calendar_id || "—"],
+        ["Location", ev.location],
+        ["Status", ev.status],
+        ["Attendees", ev.attendees?.length ? ev.attendees.join(", ") : ""],
+      ].filter(([, v]) => v && String(v).trim());
+
+      const description = (ev.description || "").trim();
+      $("#calEventBody").innerHTML = `
+        <div class="drawer__section">
+          <div class="drawer__section-label">Booking details</div>
+          <dl class="detail-grid">${rows.map(([label, val]) =>
+            `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(val))}</dd>`
+          ).join("")}</dl>
+        </div>
+        ${description ? `<div class="drawer__section">
+          <div class="drawer__section-label">Notes</div>
+          <div class="cal-event-detail__notes">${escapeHtml(description)}</div>
+        </div>` : ""}
+      `;
+
+      const foot = $("#calEventFootnote");
+      if (ev.html_link) {
+        foot.innerHTML = `<a href="${escapeHtml(ev.html_link)}" target="_blank" rel="noopener">Open in Google Calendar</a>`;
+        foot.hidden = false;
+      } else {
+        foot.hidden = true;
+        foot.textContent = "";
+      }
+      openCalEventModal();
+    }
+
+    function openCalEventDetail(eventId) {
+      const ev = calEventsById[eventId];
+      if (!ev) {
+        toast("Could not load booking details.");
+        return;
+      }
+      renderCalEventDetail(ev);
+    }
+
+    function calIsoDateKey(iso, tz) {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        const parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: tz || undefined,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(d);
+        const y = parts.find((p) => p.type === "year")?.value;
+        const m = parts.find((p) => p.type === "month")?.value;
+        const day = parts.find((p) => p.type === "day")?.value;
+        return y && m && day ? `${y}-${m}-${day}` : "";
+      } catch {
+        return iso.slice(0, 10);
+      }
+    }
+
+    function monthTitle(year, month, tz) {
+      const d = new Date(Date.UTC(year, month, 1));
+      return d.toLocaleDateString([], { month: "long", year: "numeric", timeZone: tz || undefined });
+    }
+
+    function todayParts(tz) {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz || undefined,
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+      }).formatToParts(new Date());
+      return {
+        year: Number(parts.find((p) => p.type === "year")?.value),
+        month: Number(parts.find((p) => p.type === "month")?.value) - 1,
+        day: Number(parts.find((p) => p.type === "day")?.value),
+      };
+    }
+
+    function buildEventsByDate(events, tz) {
+      const map = new Map();
+      for (const ev of events || []) {
+        const key = calIsoDateKey(ev.start, tz);
+        if (!key) continue;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(ev);
+      }
+      for (const items of map.values()) {
+        items.sort((a, b) => String(a.start).localeCompare(String(b.start)));
+      }
+      return map;
+    }
+
+    function buildMonthCells(year, month) {
+      const firstDow = new Date(Date.UTC(year, month, 1)).getUTCDay();
+      const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+      const cells = [];
+      const prevMonth = month === 0 ? 11 : month - 1;
+      const prevYear = month === 0 ? year - 1 : year;
+      const daysInPrev = new Date(Date.UTC(prevYear, prevMonth + 1, 0)).getUTCDate();
+      for (let i = firstDow - 1; i >= 0; i--) {
+        cells.push({ year: prevYear, month: prevMonth, day: daysInPrev - i, inMonth: false });
+      }
+      for (let day = 1; day <= daysInMonth; day++) {
+        cells.push({ year, month, day, inMonth: true });
+      }
+      let nextYear = month === 11 ? year + 1 : year;
+      let nextMonth = month === 11 ? 0 : month + 1;
+      let nextDay = 1;
+      while (cells.length < 42) {
+        cells.push({ year: nextYear, month: nextMonth, day: nextDay, inMonth: false });
+        nextDay += 1;
+        const dim = new Date(Date.UTC(nextYear, nextMonth + 1, 0)).getUTCDate();
+        if (nextDay > dim) {
+          nextDay = 1;
+          nextMonth += 1;
+          if (nextMonth > 11) {
+            nextMonth = 0;
+            nextYear += 1;
+          }
+        }
+      }
+      return cells;
+    }
+
+    function renderCalendarGrid(data) {
+      const body = $("#calBody");
+      body.classList.remove("cal-body--list", "cal-body--week");
+      const tz = data.timezone || undefined;
+      const events = data.events || [];
+      const byDate = buildEventsByDate(events, tz);
+
+      if (!calMonthAnchor) {
+        const now = todayParts(tz);
+        calMonthAnchor = { year: now.year, month: now.month };
+      }
+
+      const { year, month } = calMonthAnchor;
+      const today = todayParts(tz);
+      const cells = buildMonthCells(year, month);
+      const weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+      const tzLabel = calTzAbbrev(tz);
+
+      body.innerHTML = `<div class="cal-grid-wrap">
+        <div class="cal-grid-nav">
+          <div class="cal-grid-nav__left">
+            <h2 class="cal-grid-nav__title">${escapeHtml(monthTitle(year, month, tz))}</h2>
+            <div class="cal-grid-nav__arrows" aria-label="Change month">
+              <button type="button" class="cal-grid-nav__icon-btn" id="calPrevMonth" aria-label="Previous month">&#8249;</button>
+              <button type="button" class="cal-grid-nav__icon-btn" id="calNextMonth" aria-label="Next month">&#8250;</button>
+            </div>
+            <button type="button" class="cal-grid-nav__today" id="calTodayBtn">Today</button>
+          </div>
+          ${tzLabel ? `<div class="cal-grid-nav__tz">Times in <strong>${escapeHtml(tzLabel)}</strong></div>` : ""}
+        </div>
+        <div class="cal-grid">
+          <div class="cal-grid__weekdays">${weekdays.map((d) =>
+            `<div class="cal-grid__weekday">${d}</div>`
+          ).join("")}</div>
+          <div class="cal-grid__cells">${cells.map((cell) => {
+            const key = `${cell.year}-${String(cell.month + 1).padStart(2, "0")}-${String(cell.day).padStart(2, "0")}`;
+            const isToday = cell.year === today.year && cell.month === today.month && cell.day === today.day;
+            const dayEvents = byDate.get(key) || [];
+            const visible = dayEvents.slice(0, 2);
+            const extra = dayEvents.length - visible.length;
+            return `<div class="cal-grid__cell${cell.inMonth ? "" : " is-other-month"}${isToday ? " is-today" : ""}">
+              <div class="cal-grid__daynum">${cell.day}</div>
+              <div class="cal-grid__events">${visible.map((ev, i) => {
+                const color = calEventColor(ev, i);
+                return renderGridEvent(ev, tz, color);
+              }).join("")}${extra > 0 ? `<button type="button" class="cal-grid__more">+${extra} more</button>` : ""}</div>
+            </div>`;
+          }).join("")}</div>
+        </div>
+      </div>`;
+
+      $("#calPrevMonth").addEventListener("click", () => {
+        calMonthAnchor.month -= 1;
+        if (calMonthAnchor.month < 0) { calMonthAnchor.month = 11; calMonthAnchor.year -= 1; }
+        renderCalendar(calendarData);
+      });
+      $("#calNextMonth").addEventListener("click", () => {
+        calMonthAnchor.month += 1;
+        if (calMonthAnchor.month > 11) { calMonthAnchor.month = 0; calMonthAnchor.year += 1; }
+        renderCalendar(calendarData);
+      });
+      $("#calTodayBtn").addEventListener("click", () => {
+        const now = todayParts(tz);
+        calMonthAnchor = { year: now.year, month: now.month };
+        renderCalendar(calendarData);
+      });
+    }
+
+    function renderCalendarWeek(data) {
+      const body = $("#calBody");
+      body.classList.remove("cal-body--list");
+      body.classList.add("cal-body--week");
+      const tz = data.timezone || undefined;
+      const events = data.events || [];
+      const byDate = buildEventsByDate(events, tz);
+      const today = todayParts(tz);
+
+      if (!calWeekAnchor) {
+        calWeekAnchor = { year: today.year, month: today.month, day: today.day };
+      }
+
+      const weekDays = buildWeekDays(calWeekAnchor);
+      const tzLabel = calTzAbbrev(tz);
+
+      body.innerHTML = `<div class="cal-week-wrap">
+        <div class="cal-grid-nav">
+          <div class="cal-grid-nav__left">
+            <h2 class="cal-grid-nav__title">${escapeHtml(weekRangeTitle(weekDays, tz))}</h2>
+            <div class="cal-grid-nav__arrows" aria-label="Change week">
+              <button type="button" class="cal-grid-nav__icon-btn" id="calPrevWeek" aria-label="Previous week">&#8249;</button>
+              <button type="button" class="cal-grid-nav__icon-btn" id="calNextWeek" aria-label="Next week">&#8250;</button>
+            </div>
+            <button type="button" class="cal-grid-nav__today" id="calTodayWeekBtn">Today</button>
+          </div>
+          ${tzLabel ? `<div class="cal-grid-nav__tz">Times in <strong>${escapeHtml(tzLabel)}</strong></div>` : ""}
+        </div>
+        <div class="cal-week">
+          ${weekDays.map((day) => {
+            const header = dayHeaderParts(day, tz, today);
+            const dayEvents = byDate.get(day.key) || [];
+            return `<div class="cal-week__col${header.isToday ? " is-today" : ""}">
+              <div class="cal-week__head">
+                <span class="cal-week__dow">${escapeHtml(header.dow.toUpperCase())}</span>
+                <span class="cal-week__date${header.isToday ? " is-today" : ""}">${header.dayNum}</span>
+              </div>
+              <div class="cal-week__events">${dayEvents.length
+                ? dayEvents.map((ev, i) => {
+                    const color = calEventColor(ev, i);
+                    return renderWeekEvent(ev, tz, color);
+                  }).join("")
+                : `<div class="cal-week__empty">No appointments</div>`}
+              </div>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+
+      $("#calPrevWeek").addEventListener("click", () => {
+        calWeekAnchor = addDaysParts(calWeekAnchor, -7);
+        renderCalendar(calendarData);
+      });
+      $("#calNextWeek").addEventListener("click", () => {
+        calWeekAnchor = addDaysParts(calWeekAnchor, 7);
+        renderCalendar(calendarData);
+      });
+      $("#calTodayWeekBtn").addEventListener("click", () => {
+        const now = todayParts(tz);
+        calWeekAnchor = { year: now.year, month: now.month, day: now.day };
+        renderCalendar(calendarData);
+      });
+    }
+
+    function renderCalendarList(data) {
+      const body = $("#calBody");
+      body.classList.remove("cal-body--week");
+      body.classList.add("cal-body--list");
+      const tz = data.timezone || undefined;
+      const events = data.events || [];
+      if (!events.length) {
+        body.innerHTML = '<div class="empty">No upcoming events on the rep calendar.</div>';
+        return;
+      }
+      const groups = new Map();
+      for (const ev of events) {
+        const key = calDayKey(ev.start, tz);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(ev);
+      }
+      body.innerHTML = [...groups.entries()].map(([day, items]) => {
+        const today = items.some((ev) => isToday(ev.start, tz));
+        return `<div class="cal-day">
+          <div class="cal-day__label${today ? " is-today" : ""}">${day}${today ? " · today" : ""}</div>
+          ${items.map((ev) => {
+            const key = calEventKey(ev);
+            const sub = [ev.attendees?.join(", "), ev.location, ev.description?.slice(0, 120)]
+              .filter(Boolean).join(" · ");
+            return `<div class="cal-event cal-event--clickable" data-cal-event-id="${escapeHtml(key)}" role="button" tabindex="0">
+              <div class="cal-event__time">${escapeHtml(calTimeRangeLabel(ev, tz))}</div>
+              <div>
+                <div class="cal-event__title">${escapeHtml(ev.summary || "(No title)")}</div>
+                ${sub ? `<div class="cal-event__sub">${escapeHtml(sub)}</div>` : ""}
+              </div>
+            </div>`;
+          }).join("")}
+        </div>`;
+      }).join("");
+    }
+
+    function renderCalendar(data) {
+      calendarData = data;
+      const body = $("#calBody");
+      const meta = $("#calMeta");
+      if (!data?.configured) {
+        meta.textContent = data?.note || "Calendar not configured";
+        body.classList.remove("cal-body--list");
+        body.innerHTML = '<div class="empty" style="padding:1.5rem">Set GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_CALENDAR_CREDENTIALS_JSON in server env.</div>';
+        return;
+      }
+      if (data.error) {
+        meta.textContent = `${data.calendar_id || ""} · ${data.timezone || ""} · error`;
+        body.classList.remove("cal-body--list");
+        body.innerHTML = `<div class="empty" style="padding:1.5rem">${escapeHtml(data.error)}</div>`;
+        return;
+      }
+      const tz = data.timezone || undefined;
+      const tzAbbrev = calTzAbbrev(tz);
+      indexCalendarEvents(data.events || []);
+      meta.textContent = `${data.calendar_id || "calendar"} · ${tzAbbrev || tz || ""} · next ${data.range_days || 60} days`;
+      if (calViewMode === "grid") {
+        renderCalendarGrid(data);
+        return;
+      }
+      if (calViewMode === "week") {
+        renderCalendarWeek(data);
+        return;
+      }
+      const events = data.events || [];
+      if (!events.length) {
+        body.classList.add("cal-body--list");
+        body.innerHTML = '<div class="empty">No upcoming events on the rep calendar.</div>';
+        return;
+      }
+      renderCalendarList(data);
+    }
+
+    function escapeHtml(text) {
+      return String(text || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function loadCalendar() {
+      try {
+        const data = await api("/calendar?days=60");
+        renderCalendar(data);
+      } catch (e) {
+        $("#calMeta").textContent = "Failed to load";
+        $("#calBody").classList.remove("cal-body--list");
+        $("#calBody").innerHTML = `<div class="empty" style="padding:1.5rem">${escapeHtml(e.message)}</div>`;
+      }
+    }
+
+    function setCalView(mode) {
+      calViewMode = mode;
+      document.querySelectorAll(".cal-view-toggle__btn").forEach((btn) => {
+        btn.classList.toggle("is-active", btn.dataset.calView === mode);
+      });
+      if (mode === "week" && calendarData?.timezone) {
+        const tz = calendarData.timezone;
+        const now = todayParts(tz);
+        if (!calWeekAnchor) {
+          calWeekAnchor = { year: now.year, month: now.month, day: now.day };
+        }
+      }
+      if (calendarData) renderCalendar(calendarData);
+    }
+
+    function startCalendarPoll() {
+      if (calPollTimer) clearInterval(calPollTimer);
+      calPollTimer = setInterval(loadCalendar, 60000);
+    }
+
+    function stopCalendarPoll() {
+      if (calPollTimer) {
+        clearInterval(calPollTimer);
+        calPollTimer = null;
+      }
+    }
+
+    const PAGE_TITLES = { overview: "Overview", calls: "Calls", calendar: "Calendar", knowledge: "Knowledge", settings: "Settings" };
+    let activeTabId = "overview";
+    let tabBeforeSettings = "overview";
+
+    function activateTab(tabId) {
+      document.querySelectorAll(".tab").forEach((t) => {
+        t.classList.toggle("is-active", t.dataset.tab === tabId);
+      });
+      document.querySelectorAll(".panel").forEach((p) => {
+        p.classList.toggle("is-active", p.id === "panel-" + tabId);
+      });
+      const title = PAGE_TITLES[tabId] || "Dashboard";
+      $("#pageTitle").textContent = title;
+      document.title = "Hammer · " + title;
+      activeTabId = tabId;
+    }
+
+    function switchToTab(tabId) {
+      if (activeTabId === "settings" && tabId !== "settings") {
+        clearSettingsAccess();
+        hideSettingsGate();
+      }
+
+      stopCalendarPoll();
+      if (tabId !== "calls") closeCallDrawer();
+      closeCalEventModal();
+
+      if (tabId === "settings") {
+        if (activeTabId !== "settings") tabBeforeSettings = activeTabId;
+        activateTab("settings");
+        if (!settingsUnlocked) {
+          showSettingsGate();
+          return;
+        }
+        loadSettings();
+        loadVoices();
+        return;
+      }
+
+      activateTab(tabId);
+      if (tabId === "calls") loadCalls();
+      if (tabId === "calendar") { loadCalendar(); startCalendarPoll(); }
+      if (tabId === "knowledge") { loadKnowledgeDocs(); loadKbPlaybook(); }
+    }
+
+    function cancelSettingsGate() {
+      hideSettingsGate();
+      if (activeTabId === "settings" && !settingsUnlocked) {
+        switchToTab(tabBeforeSettings || "overview");
+      }
+    }
+
+    // Tabs
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => switchToTab(tab.dataset.tab));
+    });
+
+    $("#btnRefreshCalendar").addEventListener("click", loadCalendar);
+    document.querySelectorAll(".cal-view-toggle__btn").forEach((btn) => {
+      btn.addEventListener("click", () => setCalView(btn.dataset.calView || "grid"));
+    });
+    $("#drawerClose").addEventListener("click", closeCallDrawer);
+    $("#callModalBackdrop").addEventListener("click", closeCallDrawer);
+    $("#calEventClose").addEventListener("click", closeCalEventModal);
+    $("#calEventModalBackdrop").addEventListener("click", closeCalEventModal);
+    $("#calBody").addEventListener("click", (e) => {
+      const el = e.target.closest("[data-cal-event-id]");
+      if (!el) return;
+      e.preventDefault();
+      openCalEventDetail(el.dataset.calEventId);
+    });
+    $("#calBody").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const el = e.target.closest("[data-cal-event-id]");
+      if (!el) return;
+      e.preventDefault();
+      openCalEventDetail(el.dataset.calEventId);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (!$("#settingsGate").hidden) cancelSettingsGate();
+      else if (!$("#calEventModal").hidden) closeCalEventModal();
+      else if (!$("#callModal").hidden) closeCallDrawer();
+    });
+    $("#callsSearch").addEventListener("input", (e) => {
+      callsSearchQuery = e.target.value || "";
+      renderCallsTable();
+    });
+
+    initCallsColumnMenus();
+    updateCallsHeaderIndicators();
+
+    $("#btnSaveVoice").addEventListener("click", saveVoice);
+    $("#btnSaveSettings").addEventListener("click", saveSettings);
+    $("#btnResetSettings").addEventListener("click", resetSettings);
+
+    $("#settingsGateForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      trySettingsUnlock($("#settingsGatePassword").value);
+    });
+    $("#btnSettingsGateCancel").addEventListener("click", cancelSettingsGate);
+    $("#settingsGateBackdrop").addEventListener("click", cancelSettingsGate);
+
+    function bootDashboard() {
+      refreshOverview();
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(refreshOverview, 3000);
+    }
+
+    // ─── KNOWLEDGE DATABASE ───────────────────────────────────────────────
+
+    // Sub-tab switching
+    document.querySelectorAll(".kb-subnav__btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".kb-subnav__btn").forEach((b) => b.classList.remove("is-active"));
+        document.querySelectorAll(".kb-panel").forEach((p) => { p.hidden = true; });
+        btn.classList.add("is-active");
+        const panel = $("#kb-panel-" + btn.dataset.kbTab);
+        if (panel) panel.hidden = false;
+      });
+    });
+
+    let kbDocs = [];
+
+    function kbKindBadge(kind) {
+      const labels = { wiki: "Wiki", playbook: "Playbook", raw: "Raw" };
+      const cls = { wiki: "tag--email", playbook: "tag--approved", raw: "tag--none" };
+      return `<span class="tag ${cls[kind] || ""}">${labels[kind] || kind}</span>`;
+    }
+
+    function renderKbDocList(filter) {
+      const list = $("#kbDocList");
+      const meta = $("#kbSourcesMeta");
+      const f = (filter || "").toLowerCase().trim();
+      const shown = f ? kbDocs.filter((d) => d.doc_id.toLowerCase().includes(f)) : kbDocs;
+      meta.textContent = `${shown.length} of ${kbDocs.length} source${kbDocs.length !== 1 ? "s" : ""}`;
+      if (!shown.length) {
+        list.innerHTML = '<div class="kb-empty">No documents match this filter.</div>';
+        return;
+      }
+      list.innerHTML = shown.map((d) => `
+        <div class="kb-doc-row" data-doc-id="${d.doc_id}">
+          <div class="kb-doc-row__left">
+            ${kbKindBadge(d.kind)}
+            <span class="kb-doc-row__id">${d.doc_id}</span>
+          </div>
+          <div class="kb-doc-row__right">
+            <span class="kb-doc-row__meta">${d.chunk_count} chunk${d.chunk_count !== 1 ? "s" : ""} · ${(d.char_count / 1000).toFixed(1)}k chars</span>
+            <button class="btn btn--ghost btn--sm kb-doc-row__view" data-doc-id="${d.doc_id}" type="button">View</button>
+          </div>
+        </div>`).join("");
+
+      list.querySelectorAll(".kb-doc-row__view").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openKbDocPreview(btn.dataset.docId);
+        });
+      });
+    }
+
+    async function loadKnowledgeDocs() {
+      $("#kbSourcesMeta").textContent = "Loading…";
+      try {
+        const data = await api("/knowledge/docs");
+        kbDocs = data.docs || [];
+        renderKbDocList($("#kbSourceFilter").value);
+      } catch (e) {
+        $("#kbSourcesMeta").textContent = "Error: " + e.message;
+      }
+    }
+
+    async function openKbDocPreview(docId) {
+      const preview = $("#kbDocPreview");
+      const title = $("#kbPreviewTitle");
+      const body = $("#kbPreviewBody");
+      title.textContent = docId;
+      body.textContent = "Loading…";
+      preview.hidden = false;
+      try {
+        const params = new URLSearchParams({ doc_id: docId });
+        const data = await api("/knowledge/doc?" + params);
+        body.textContent = data.text || "(empty)";
+      } catch (e) {
+        body.textContent = "Error: " + e.message;
+      }
+    }
+
+    $("#kbClosePreview").addEventListener("click", () => { $("#kbDocPreview").hidden = true; });
+    $("#kbSourceFilter").addEventListener("input", (e) => renderKbDocList(e.target.value));
+
+    // Test Search
+    async function runKbSearch() {
+      const q = $("#kbSearchQuery").value.trim();
+      if (!q) return;
+      const results = $("#kbSearchResults");
+      results.innerHTML = '<div class="kb-empty">Searching…</div>';
+      try {
+        const params = new URLSearchParams({ q, k: 8 });
+        const data = await api("/knowledge/search?" + params);
+        if (!data.results || !data.results.length) {
+          results.innerHTML = '<div class="kb-empty">No results found.</div>';
+          return;
+        }
+        results.innerHTML = data.results.map((r, i) => `
+          <div class="kb-result">
+            <div class="kb-result__head">
+              <span class="kb-result__rank">#${i + 1}</span>
+              ${kbKindBadge(r.doc_id.startsWith("playbook/") ? "playbook" : r.doc_id.startsWith("raw/") ? "raw" : "wiki")}
+              <span class="kb-result__docid">${r.doc_id}</span>
+              <span class="kb-result__score">score ${r.score}</span>
+            </div>
+            <pre class="kb-result__text">${r.text.replace(/</g,"&lt;")}</pre>
+          </div>`).join("");
+      } catch (e) {
+        results.innerHTML = `<div class="kb-empty">Error: ${e.message}</div>`;
+      }
+    }
+
+    $("#btnKbSearch").addEventListener("click", runKbSearch);
+    $("#kbSearchQuery").addEventListener("keydown", (e) => { if (e.key === "Enter") runKbSearch(); });
+
+    // Playbook
+    let kbPlaybookEditable = false;
+
+    function renderKbPlaybook(data) {
+      const list = $("#kbPlaybookList");
+      const empty = $("#kbPlaybookEmpty");
+      const note = $("#kbPlaybookNote");
+      kbPlaybookEditable = data.editable;
+      note.textContent = data.note || "";
+      if (!data.entries || !data.entries.length) {
+        list.innerHTML = "";
+        empty.hidden = false;
+        return;
+      }
+      empty.hidden = true;
+      list.innerHTML = data.entries.map((e) => `
+        <div class="kb-playbook-entry" data-entry-id="${e.id}">
+          <div class="kb-playbook-entry__head">
+            <span class="kb-playbook-entry__title">${e.heading.replace(/^###\s*/, "")}</span>
+            ${data.editable ? `<button class="btn btn--ghost btn--sm kb-delete-entry" data-entry-id="${e.id}" type="button" title="Remove entry">Delete</button>` : ""}
+          </div>
+          <div class="kb-playbook-entry__body">${e.body.replace(/</g,"&lt;")}</div>
+        </div>`).join("");
+
+      if (data.editable) {
+        list.querySelectorAll(".kb-delete-entry").forEach((btn) => {
+          btn.addEventListener("click", () => deletePlaybookEntry(btn.dataset.entryId));
+        });
+      }
+    }
+
+    async function loadKbPlaybook() {
+      $("#kbPlaybookNote").textContent = "Loading…";
+      try {
+        const data = await api("/knowledge/playbook");
+        renderKbPlaybook(data);
+      } catch (e) {
+        $("#kbPlaybookNote").textContent = "Error: " + e.message;
+      }
+    }
+
+    async function deletePlaybookEntry(entryId) {
+      if (!confirm("Remove this playbook entry?")) return;
+      try {
+        const r = await api(`/knowledge/playbook/entry/${entryId}`, { method: "DELETE" });
+        if (r.ok) { toast("Entry removed"); loadKbPlaybook(); }
+        else toast(r.error || "Could not remove entry");
+      } catch (e) { toast(e.message); }
+    }
+
+    $("#btnRefreshPlaybook").addEventListener("click", loadKbPlaybook);
+
+    // Add Knowledge (playbook append)
+    async function ingestToPlaybook() {
+      const title = $("#kbIngestTitle").value.trim();
+      const content = $("#kbIngestContent").value.trim();
+      const msg = $("#kbIngestMsg");
+      msg.hidden = true;
+      if (!title || !content) { toast("Both title and content are required."); return; }
+      try {
+        const r = await api("/knowledge/playbook/entry", {
+          method: "POST",
+          body: JSON.stringify({ title, content }),
+        });
+        if (r.ok) {
+          msg.textContent = "Entry saved! The AI will use it on the next call.";
+          msg.className = "kb-ingest-msg kb-ingest-msg--ok";
+          msg.hidden = false;
+          $("#kbIngestTitle").value = "";
+          $("#kbIngestContent").value = "";
+          loadKbPlaybook();
+        } else {
+          msg.textContent = r.error || "Could not save entry.";
+          msg.className = "kb-ingest-msg kb-ingest-msg--err";
+          msg.hidden = false;
+        }
+      } catch (e) {
+        msg.textContent = e.message;
+        msg.className = "kb-ingest-msg kb-ingest-msg--err";
+        msg.hidden = false;
+      }
+    }
+
+    $("#btnKbIngest").addEventListener("click", ingestToPlaybook);
+
+    // Upload PDF / md / txt file → raw/hammer-data
+    async function uploadRawSource() {
+      const fileInput = $("#kbRawUploadFile");
+      const title = $("#kbRawUploadTitle").value.trim();
+      const msg = $("#kbRawUploadMsg");
+      msg.hidden = true;
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) { toast("Choose a file to upload."); return; }
+      const form = new FormData();
+      form.append("file", file, file.name);
+      if (title) form.append("title", title);
+      try {
+        const r = await fetch(API + "/knowledge/ingest/upload", {
+          method: "POST",
+          headers: authHeaders(),
+          body: form,
+        });
+        if (r.status === 401 && IS_ADMIN) {
+          clearAdminToken();
+          showLogin();
+          throw new Error("Session expired — sign in again.");
+        }
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          throw new Error(formatApiError(data, r.statusText));
+        }
+        msg.textContent = `Uploaded ${data.filename} → ${data.path}. Indexed as ${data.doc_id}.`;
+        msg.className = "kb-ingest-msg kb-ingest-msg--ok";
+        msg.hidden = false;
+        fileInput.value = "";
+        $("#kbRawUploadTitle").value = "";
+        loadKnowledgeDocs();
+      } catch (e) {
+        msg.textContent = e.message;
+        msg.className = "kb-ingest-msg kb-ingest-msg--err";
+        msg.hidden = false;
+      }
+    }
+
+    $("#btnKbRawUpload").addEventListener("click", uploadRawSource);
+
+    // ─── END KNOWLEDGE DATABASE ───────────────────────────────────────────
+
+    $("#btnLogin").addEventListener("click", (e) => {
+      e.preventDefault();
+      const pw = $("#loginPassword").value;
+      tryLogin(pw);
+    });
+    $("#loginForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const pw = $("#loginPassword").value;
+      tryLogin(pw);
+    });
+
+    async function initAdminGate() {
+      showLogin();
+      const saved = getAdminToken();
+      if (!saved) return;
+      setLoginLoading(true);
+      try {
+        if (await validateAdminToken(saved)) {
+          hideLogin();
+          bootDashboard();
+        } else {
+          clearAdminToken();
+          setLoginError("Previous session expired — sign in again.");
+        }
+      } catch {
+        clearAdminToken();
+        setLoginError("Could not verify session — sign in again.");
+      } finally {
+        setLoginLoading(false);
+      }
+    }
+
+    if (IS_ADMIN) {
+      initAdminGate();
+    } else {
+      hideLogin();
+      bootDashboard();
+    }
+  </script>
+</body>
+</html>

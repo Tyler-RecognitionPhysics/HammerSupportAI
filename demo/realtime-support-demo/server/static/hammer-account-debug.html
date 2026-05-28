@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Hammer account creation — local debug</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #111; }
+    body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.25rem; }
+    label { display: block; margin-top: 0.75rem; font-weight: 600; font-size: 0.85rem; }
+    input, select, button { font-size: 1rem; margin-top: 0.25rem; }
+    input, select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+    button { padding: 0.5rem 1rem; cursor: pointer; background: #c91e1e; color: #fff; border: none; border-radius: 4px; }
+    button.secondary { background: #333; }
+    #log { margin-top: 1.5rem; background: #f4f4f4; padding: 1rem; font-family: ui-monospace, monospace; font-size: 0.8rem; white-space: pre-wrap; max-height: 420px; overflow: auto; }
+    .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+    .ok { background: #d4edda; }
+    .warn { background: #fff3cd; }
+    p.hint { color: #555; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Hammer account creation — local debug</h1>
+  <p class="hint">
+    Chromium opens when you click <strong>Open form</strong> or <strong>Run sample flow</strong> (fills run in the background; watch the browser).
+    If the UI froze or shows Internal Server Error, click <strong>Reset session</strong>, then <strong>Open form</strong> again.
+    <strong>Voice on 127.0.0.1:5173:</strong> real email <em>I approve</em> needs <strong>ngrok</strong> (<code>start-ngrok.ps1</code>) so Zap 2 can POST here — or click <strong>Approve email</strong> with the <em>same</em> address the agent used in capture_lead.
+  </p>
+  <p id="status"></p>
+
+  <label>Email (session key)</label>
+  <input id="email" type="email" value="debug@dealer.com" />
+
+  <label>Dealership</label>
+  <input id="dealership" value="Debug Motors LLC" />
+
+  <label>Owner name</label>
+  <input id="name" value="Jordan Smith" />
+
+  <label>Address</label>
+  <input id="address" value="1200 Congress Ave, Austin, TX 78701" />
+
+  <div class="row">
+    <button type="button" id="btnRefresh">Refresh status</button>
+    <button type="button" class="secondary" id="btnSession">Voice session</button>
+    <button type="button" class="secondary" id="btnApprove">1. Approve email (skip Zap)</button>
+    <button type="button" class="secondary" id="btnCheckApprove">Check I approve</button>
+    <button type="button" id="btnOpen">2. Open Hammer form</button>
+    <button type="button" id="btnSample">3. Run full sample flow</button>
+    <button type="button" class="secondary" id="btnClose">Close browser</button>
+    <button type="button" class="secondary" id="btnReset">Reset session (after freeze)</button>
+  </div>
+
+  <label>Manual field fill</label>
+  <div class="row">
+    <select id="field">
+      <option value="name">name</option>
+      <option value="business_type">business_type</option>
+      <option value="phone">phone</option>
+      <option value="website">website</option>
+      <option value="address">address</option>
+      <option value="gst_hst">gst_hst</option>
+      <option value="qst">qst</option>
+    </select>
+    <input id="value" placeholder="value" style="flex:1" />
+    <button type="button" id="btnFill">Fill field</button>
+  </div>
+
+  <pre id="log"></pre>
+
+  <script>
+    const logEl = document.getElementById("log");
+    const statusEl = document.getElementById("status");
+
+    function log(msg) {
+      logEl.textContent = (logEl.textContent ? logEl.textContent + "\n" : "") + msg;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function api(path, opts = {}) {
+      const r = await fetch(path, {
+        headers: { "Content-Type": "application/json", ...opts.headers },
+        ...opts,
+      });
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      if (!r.ok) throw new Error(data.detail || data.message || text || r.status);
+      return data;
+    }
+
+    function body() {
+      return {
+        email: document.getElementById("email").value.trim(),
+        dealership: document.getElementById("dealership").value.trim(),
+        name: document.getElementById("name").value.trim(),
+        address: document.getElementById("address").value.trim(),
+      };
+    }
+
+    async function refreshStatus() {
+      const c = await api("/api/debug/hammer/config");
+      const cls = c.visible_browser ? "ok" : "warn";
+      statusEl.innerHTML =
+        `<span class="badge ${cls}">debug=${c.debug_mode}</span> ` +
+        `<span class="badge ${c.hammer_configured ? "ok" : "warn"}">credentials=${c.hammer_configured}</span> ` +
+        `<span class="badge ${cls}">visible_chromium=${c.visible_browser}</span>`;
+    }
+
+    document.getElementById("btnRefresh").onclick = async () => {
+      try { await refreshStatus(); log("status ok"); } catch (e) { log("ERR " + e.message); }
+    };
+
+    document.getElementById("btnSession").onclick = async () => {
+      try {
+        const email = document.getElementById("email").value.trim();
+        const d = await api("/api/debug/hammer/status?email=" + encodeURIComponent(email));
+        log("voice session:\n" + JSON.stringify(d, null, 2));
+        if (!d.agreement_approved) {
+          log("TIP: click Approve email with this same address before account submit.");
+        }
+        if (d.submit_error) {
+          log("SUBMIT ERROR: " + d.submit_error);
+        }
+      } catch (e) { log("session ERR: " + e.message); }
+    };
+
+    document.getElementById("btnApprove").onclick = async () => {
+      try {
+        const b = body();
+        const d = await api("/api/debug/hammer/approve", { method: "POST", body: JSON.stringify(b) });
+        log("approve: " + JSON.stringify(d));
+      } catch (e) { log("approve ERR: " + e.message); }
+    };
+
+    document.getElementById("btnCheckApprove").onclick = async () => {
+      try {
+        const email = document.getElementById("email").value.trim();
+        const d = await api("/api/debug/hammer/approval?email=" + encodeURIComponent(email));
+        log("I approve status:\n" + JSON.stringify(d, null, 2));
+        if (!d.approved) {
+          log("NOT APPROVED — use Approve email above, or fix Zap 2 → ngrok → /api/zapier/approval");
+        }
+      } catch (e) { log("check approve ERR: " + e.message); }
+    };
+
+    document.getElementById("btnOpen").onclick = async () => {
+      try {
+        const b = body();
+        const d = await api("/api/debug/hammer/open-form", { method: "POST", body: JSON.stringify(b) });
+        log("open: " + JSON.stringify(d));
+      } catch (e) { log("open ERR: " + e.message); }
+    };
+
+    document.getElementById("btnSample").onclick = async () => {
+      try {
+        log("sample flow starting — watch Chromium...");
+        const b = body();
+        const d = await api("/api/debug/hammer/run-sample", { method: "POST", body: JSON.stringify(b) });
+        log("sample: " + JSON.stringify(d, null, 2));
+      } catch (e) { log("sample ERR: " + e.message); }
+    };
+
+    document.getElementById("btnReset").onclick = async () => {
+      try {
+        const email = document.getElementById("email").value.trim();
+        const d = await api("/api/debug/hammer/reset-session?email=" + encodeURIComponent(email), { method: "POST" });
+        log("reset: " + JSON.stringify(d));
+      } catch (e) { log("reset ERR: " + e.message); }
+    };
+
+    document.getElementById("btnClose").onclick = async () => {
+      try {
+        const email = document.getElementById("email").value.trim();
+        await api("/api/debug/hammer/close?email=" + encodeURIComponent(email), { method: "POST" });
+        log("browser closed");
+      } catch (e) { log("close ERR: " + e.message); }
+    };
+
+    document.getElementById("btnFill").onclick = async () => {
+      try {
+        const email = document.getElementById("email").value.trim();
+        const field = document.getElementById("field").value;
+        const value = document.getElementById("value").value;
+        const d = await api("/api/debug/hammer/fill-field", {
+          method: "POST",
+          body: JSON.stringify({ email, field, value }),
+        });
+        log(`fill ${field}: ` + JSON.stringify(d));
+      } catch (e) { log("fill ERR: " + e.message); }
+    };
+
+    refreshStatus().catch((e) => log("init: " + e.message));
+  </script>
+</body>
+</html>

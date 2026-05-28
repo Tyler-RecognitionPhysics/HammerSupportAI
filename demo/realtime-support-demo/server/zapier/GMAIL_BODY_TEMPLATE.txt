@@ -1,0 +1,29 @@
+ZAPIER GMAIL — DYNAMIC DEALERSHIP NAME
+=====================================
+
+Do NOT hardcode "Victory Motorsports". Victory was only test data.
+
+OPTION A (easiest): map Gmail Body to webhook field
+  agreementEmailBody
+  (entire email — greeting, pricing, I approve — already filled per signup)
+
+OPTION B (your own layout in Gmail): insert these fields from the Catch Hook step
+
+  Greeting line:     emailGreetingLine     (e.g. "Hello Sunrise Ford,")
+  Or build:          Hello                  + field dealershipName + ,
+
+  Subject:           agreementEmailSubject  (e.g. "Hammer agreement — Sunrise Ford")
+
+  Monthly price:     subscriptionMonthlyDisplay
+  First month:       firstMonthBillingDisplay
+  Next bill date:    nextPaymentDate
+  Plan summary:      billingSummary
+
+Example opening (pick fields in Zapier — do not type a fixed store name):
+
+  [emailGreetingLine]
+
+  *Please reply to this email with "I approve" as your agreement to the terms below:
+
+  Welcome to HAMMER! Your subscription is month-to-month.
+  ...

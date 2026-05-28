@@ -1,0 +1,31 @@
+# Fly.io app for always-on SIP webhook + tool sideband.
+# Deploy from repo root: fly deploy --config demo/realtime-sales-demo/fly.toml
+
+app = "hammer-voice-telephony"
+primary_region = "iad"
+
+[build]
+  dockerfile = "server/Dockerfile"
+  context = "../.."
+
+[env]
+  REALTIME_SALES_TELEPHONY = "1"
+  REALTIME_SALES_PRODUCTION = "1"
+  REALTIME_SALES_REPO_ROOT = "/app"
+  REALTIME_SALES_PUBLIC_BASE_URL = "https://www.hammertime.com"
+  HAMMER_OFFICE_USE_PLAYWRIGHT = "1"
+  HAMMER_OFFICE_HEADLESS = "1"
+  HAMMER_OFFICE_INSTANT = "1"
+
+[http_service]
+  internal_port = 8780
+  force_https = true
+  # SIP webhooks must hit a warm machine — scale-to-zero drops incoming calls.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "2048mb"
+  cpu_kind = "shared"
+  cpus = 2

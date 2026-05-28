@@ -1,0 +1,875 @@
+/**
+ * Landing layout resilience — browser zoom, narrow widths, and short viewports.
+ * Loaded after cal-minimal-theme.css.
+ */
+
+.app-shell.app-shell--landing {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-shell--landing .landing-main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  box-sizing: border-box;
+}
+
+.app-shell--landing .landing-hero {
+  min-width: 0;
+  box-sizing: border-box;
+  padding-inline: clamp(8px, 3vw, 20px);
+}
+
+/* Headline block — legacy statement wrapper unused; headline is the column */
+.app-shell--landing .landing-hero__title-statement {
+  display: contents;
+}
+
+/* Mobile — safe-area padding (title scale rules at end of file) */
+@media (max-width: 719px) {
+  .app-shell.app-shell--landing {
+    overflow-x: visible;
+  }
+
+  .app-shell--landing .landing-main {
+    overflow-x: visible;
+    padding-bottom: calc(var(--site-footer-block, 2.875rem) + 20px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Mobile menu toggle — hidden on desktop */
+.app-shell--landing .chrome__menu-toggle {
+  display: none;
+  grid-area: menu;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 1px 4px rgba(201, 30, 30, 0.06);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.app-shell--landing .chrome__menu-toggle:hover {
+  background: rgba(255, 255, 255, 0.62);
+  transform: translateY(-1px);
+}
+
+.app-shell--landing .chrome__menu-toggle:focus-visible {
+  outline: 2px solid var(--landing-red, #c91e1e);
+  outline-offset: 2px;
+}
+
+.app-shell--landing .chrome__menu-icon {
+  display: block;
+  width: 18px;
+  height: 12px;
+  position: relative;
+}
+
+.app-shell--landing .chrome__menu-icon::before,
+.app-shell--landing .chrome__menu-icon::after,
+.app-shell--landing .chrome__menu-icon {
+  background: transparent;
+}
+
+.app-shell--landing .chrome__menu-icon::before,
+.app-shell--landing .chrome__menu-icon::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--landing-ink, #14121d);
+  transition: transform 0.2s ease, top 0.2s ease, opacity 0.2s ease;
+}
+
+.app-shell--landing .chrome__menu-icon::before {
+  top: 0;
+  box-shadow: 0 5px 0 var(--landing-ink, #14121d);
+}
+
+.app-shell--landing .chrome__menu-icon::after {
+  top: 10px;
+}
+
+.app-shell--landing .chrome__menu-toggle.is-open .chrome__menu-icon::before {
+  top: 5px;
+  box-shadow: none;
+  transform: rotate(45deg);
+}
+
+.app-shell--landing .chrome__menu-toggle.is-open .chrome__menu-icon::after {
+  top: 5px;
+  transform: rotate(-45deg);
+}
+
+.app-shell--landing .chrome-mobile-menu {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  pointer-events: none;
+}
+
+.app-shell--landing .chrome-mobile-menu.is-open {
+  display: block;
+  pointer-events: auto;
+}
+
+.app-shell--landing .chrome-mobile-menu__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(14, 12, 18, 0.12);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+
+.app-shell--landing .chrome-mobile-menu__sheet {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 72px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1120px, calc(100% - 28px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 12px 40px rgba(20, 18, 29, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-sizing: border-box;
+}
+
+.app-shell--landing .chrome__jump--mobile {
+  width: 100%;
+  justify-content: center;
+  font-size: 14px;
+  padding: 12px 16px;
+}
+
+/* Header — hide center nav before three-column grid squishes (matches style.css) */
+@media (max-width: 900px) {
+  .app-shell--landing .chrome__nav {
+    display: none !important;
+  }
+
+  .app-shell--landing .chrome__menu-toggle {
+    display: inline-flex;
+  }
+
+  .app-shell--landing .chrome {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "brand menu try";
+    column-gap: 10px;
+  }
+
+  .app-shell--landing .chrome__actions {
+    grid-area: try;
+  }
+
+  .app-shell--landing .chrome__phone-link--header {
+    display: none !important;
+  }
+}
+
+@media (min-width: 901px) {
+  .app-shell--landing .chrome__phone-link--mobile {
+    display: none !important;
+  }
+}
+
+.app-shell--landing .chrome {
+  min-width: 0;
+  overflow-x: clip;
+  box-sizing: border-box;
+}
+
+.app-shell--landing .chrome__brand-link {
+  min-width: 0;
+}
+
+.app-shell--landing .chrome__brand-link .logo-img--hammer {
+  width: clamp(100px, 28vw, 148px) !important;
+}
+
+/* Footer — legal pills bottom-left, login bottom-right (override legacy centered nav) */
+.app-shell--landing .site-footer {
+  align-items: stretch !important;
+}
+
+.app-shell--landing .site-footer__nav {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  justify-content: unset !important;
+}
+
+.app-shell--landing .site-footer__legal {
+  justify-content: flex-start !important;
+  justify-self: start !important;
+}
+
+.app-shell--landing .site-footer__nav > a.chrome__jump {
+  justify-self: end !important;
+  grid-column: 2 !important;
+}
+
+/* Short viewports — tighten vertical rhythm so hero + footer fit */
+@media (max-height: 700px) {
+  .app-shell--landing {
+    --landing-hero-offset: clamp(5.5rem, 12vh, 8.5rem);
+    --landing-hero-lift: 16px;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) {
+    gap: clamp(14px, 2.5vh, 24px);
+  }
+
+  @media (max-width: 719px) {
+    .app-shell--landing .landing-hero:not(.is-call-focus) {
+      gap: clamp(12px, 2.2vh, 18px) !important;
+    }
+
+    .app-shell--landing .landing-hero__title-row--lead {
+      font-size: clamp(1.65rem, 7.5vw, 2.35rem) !important;
+    }
+
+    .app-shell--landing .landing-hero__title-row--payoff {
+      font-size: clamp(1.05rem, 4.8vw, 1.45rem) !important;
+    }
+
+    .app-shell--landing .landing-hero:not(.is-call-focus) .cal-badge {
+      padding: 6px 8px !important;
+      font-size: 10px !important;
+    }
+  }
+}
+
+/* Live demo status — don't force horizontal scroll */
+.app-shell--landing .hero-glass__live .listen-indicator {
+  max-width: min(100%, 20rem);
+  width: auto;
+}
+
+.app-shell--landing .hero-glass {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* ─── Hero stack: centered on viewport (loads last — wins theme conflicts) ─── */
+.app-shell--landing .landing-main {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+.app-shell--landing .landing-hero {
+  align-items: center !important;
+  justify-content: flex-start !important;
+  text-align: center !important;
+  width: 100% !important;
+  max-width: min(720px, 100%) !important;
+  margin-inline: auto !important;
+}
+
+.app-shell--landing .landing-hero__title {
+  display: grid !important;
+  justify-items: center !important;
+  align-content: start !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-inline: auto !important;
+  padding-inline: clamp(12px, 3vw, 28px) !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+}
+
+.app-shell--landing .landing-hero__title-eyebrow {
+  justify-self: center !important;
+  margin-inline: auto !important;
+}
+
+/* One centered box (width = longest line); both lines share it */
+.app-shell--landing .landing-hero__headline {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  margin-inline: auto !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  text-align: center !important;
+}
+
+.app-shell--landing .landing-hero__headline .landing-hero__title-row,
+.app-shell--landing .landing-hero__headline .landing-hero__title-row--lead,
+.app-shell--landing .landing-hero__headline .landing-hero__title-row--payoff {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+}
+
+.app-shell--landing .landing-hero__headline .landing-hero__title-row--payoff {
+  margin-top: clamp(0.35rem, 0.9vh, 0.55rem) !important;
+}
+
+.app-shell--landing .landing-hero__headline .landing-hero__title-row--lead,
+.app-shell--landing .landing-hero__headline .landing-hero__title-row--payoff {
+  white-space: nowrap !important;
+  text-wrap: nowrap !important;
+}
+
+.app-shell--landing .landing-hero:not(.is-call-focus) .landing-hero__interaction {
+  width: 100% !important;
+  max-width: min(40rem, 100%) !important;
+  margin-inline: auto !important;
+  align-items: center !important;
+}
+
+.app-shell--landing .landing-hero:not(.is-call-focus) .hero-sub-wrap,
+.app-shell--landing .landing-hero:not(.is-call-focus) .landing-hero__support {
+  width: 100% !important;
+  align-items: center !important;
+  text-align: center !important;
+}
+
+.app-shell--landing .landing-hero__sub {
+  max-width: min(48ch, 100%) !important;
+  margin-inline: auto !important;
+  text-align: center !important;
+  text-wrap: balance !important;
+  line-height: 1.6 !important;
+}
+
+.app-shell--landing .landing-hero:not(.is-call-focus) .cal-trust-badges {
+  justify-content: center !important;
+  align-items: stretch !important;
+  flex-wrap: nowrap !important;
+  max-width: min(42rem, 100%) !important;
+  margin-inline: auto !important;
+}
+
+.app-shell--landing .landing-hero__cta-wrap {
+  width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+/* Mobile hero — stacked flow (no absolute overlap), readable type, 2×2 badges */
+@media (max-width: 719px) {
+  .app-shell--landing .landing-main {
+    align-items: stretch !important;
+    padding-inline: 12px !important;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-inline: 4px !important;
+    padding-bottom: clamp(12px, 3vh, 24px) !important;
+    gap: clamp(20px, 4.5vh, 32px) !important;
+    overflow: visible;
+  }
+
+  .app-shell--landing .landing-hero__title {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-inline: 0 !important;
+    gap: clamp(12px, 2.8vh, 18px) !important;
+  }
+
+  .app-shell--landing .landing-hero__title-eyebrow {
+    font-size: 0.625rem !important;
+    letter-spacing: 0.14em !important;
+    padding: 0.5em 0.82em 0.5em 0.68em !important;
+  }
+
+  .app-shell--landing .landing-hero__headline {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    width: 100% !important;
+    max-width: 22rem !important;
+    overflow: visible !important;
+    padding-inline: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .app-shell--landing .landing-hero__headline .landing-hero__title-row--lead,
+  .app-shell--landing .landing-hero__headline .landing-hero__title-row--payoff {
+    overflow: visible !important;
+    white-space: normal !important;
+    text-wrap: balance !important;
+  }
+
+  .app-shell--landing .landing-hero__title-row--lead {
+    font-size: clamp(1.9rem, 8.4vw, 2.75rem) !important;
+    line-height: 1.14 !important;
+    letter-spacing: -0.032em !important;
+  }
+
+  .app-shell--landing .landing-hero__title-row--payoff {
+    font-size: clamp(1.2rem, 5.4vw, 1.7rem) !important;
+    line-height: 1.2 !important;
+    letter-spacing: -0.022em !important;
+    margin-top: 0.35rem !important;
+  }
+
+  .app-shell--landing .landing-hero__title-row--lead .landing-hero__title-hot {
+    font-size: 1em !important;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) .landing-hero__interaction {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;
+    max-width: 22rem !important;
+    margin-inline: auto !important;
+    padding-inline: 0 !important;
+    gap: clamp(16px, 3.5vh, 22px) !important;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) .hero-sub-wrap,
+  .app-shell--landing .landing-hero:not(.is-call-focus) .landing-hero__support {
+    width: 100% !important;
+    gap: clamp(14px, 2.8vh, 18px) !important;
+  }
+
+  .app-shell--landing .landing-hero__sub {
+    max-width: 100% !important;
+    padding-inline: 0 !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    line-height: 1.55 !important;
+    color: rgba(12, 15, 20, 0.58) !important;
+    text-wrap: pretty !important;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) .cal-trust-badges {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-inline: auto !important;
+    padding-inline: 0 !important;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) .cal-badge {
+    display: inline-flex !important;
+    justify-content: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: none !important;
+    box-sizing: border-box !important;
+    white-space: nowrap !important;
+    padding: 7px 10px !important;
+    font-size: 11px !important;
+    gap: 5px !important;
+    letter-spacing: -0.015em !important;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) .cal-badge::before {
+    width: 4px;
+    height: 4px;
+  }
+
+  .app-shell--landing .landing-hero__cta-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-top: 2px !important;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) #footerPrimary {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 54px !important;
+    height: auto !important;
+    padding: 12px 14px !important;
+    white-space: normal !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) #footerPrimary .landing-cta__label {
+    font-size: clamp(13px, 3.5vw, 15px) !important;
+    line-height: 1.3 !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .app-shell--landing .landing-hero:not(.is-call-focus) .cal-badge {
+    padding: 6px 8px !important;
+    font-size: 10px !important;
+  }
+
+  .app-shell--landing .landing-hero:not(.is-call-focus) #footerPrimary .landing-cta__label {
+    font-size: 12.5px !important;
+  }
+}
+
+/* ─── Nav panels on mobile — vertical stack, no horizontal clip/scroll ─── */
+@media (max-width: 860px) {
+  .app-shell--landing .nav-panel-layer {
+    padding: max(8px, env(safe-area-inset-top, 0px)) 8px max(8px, env(safe-area-inset-bottom, 0px)) !important;
+    place-items: stretch !important;
+  }
+
+  .app-shell--landing .nav-panel.nav-panel--glass {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+    border-radius: 16px !important;
+  }
+
+  .app-shell--landing .nav-panel__head {
+    padding: 12px 14px 10px !important;
+    gap: 10px !important;
+  }
+
+  .app-shell--landing .nav-panel__h {
+    font-size: 1.25rem !important;
+  }
+
+  .app-shell--landing .nav-panel__body {
+    overflow-y: visible !important;
+    overflow-x: hidden !important;
+    padding: 10px 14px 12px !important;
+  }
+
+  .app-shell--landing .nav-panel__lead {
+    max-width: none !important;
+    margin: 0 0 10px !important;
+    padding-bottom: 10px !important;
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+    text-align: left !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-wrap: break-word !important;
+    hyphens: auto;
+  }
+
+  .app-shell--landing #navPanelHow .nav-panel__lead,
+  .app-shell--landing #navPanelIntegrations .nav-panel__lead,
+  .app-shell--landing #navPanelFaq .nav-panel__lead {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+  }
+
+  /* How / Integrations / Reviews — single column (overrides cal-minimal horizontal strip) */
+  .app-shell--landing #navPanelHow .nav-panel__features,
+  .app-shell--landing #navPanelIntegrations .nav-panel__features,
+  .app-shell--landing #navPanelReviews .nav-panel__features {
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    overflow: visible !important;
+    overscroll-behavior: auto !important;
+    scroll-snap-type: none !important;
+    padding-bottom: 0 !important;
+  }
+
+  .app-shell--landing #navPanelHow .nav-panel__feature:not(.nav-panel__feature--review),
+  .app-shell--landing #navPanelIntegrations .nav-panel__feature:not(.nav-panel__feature--review) {
+    display: grid !important;
+    grid-template-columns: 2.25rem minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    align-items: start !important;
+    gap: 2px 10px !important;
+    flex: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    padding: 8px 10px !important;
+    margin: 0 !important;
+    text-align: left !important;
+    border: 1px solid var(--cal-line, rgba(20, 18, 29, 0.1)) !important;
+    border-radius: 10px !important;
+    background: rgba(255, 255, 255, 0.72) !important;
+    box-shadow: none !important;
+  }
+
+  .app-shell--landing #navPanelHow .nav-panel__feature-n,
+  .app-shell--landing #navPanelIntegrations .nav-panel__feature-n {
+    grid-column: 1 !important;
+    grid-row: 1 / span 2 !important;
+    align-self: start !important;
+    margin-top: 2px !important;
+    font-size: 10px !important;
+  }
+
+  .app-shell--landing #navPanelHow .nav-panel__feature-h,
+  .app-shell--landing #navPanelIntegrations .nav-panel__feature-h {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    min-height: 0 !important;
+    width: auto !important;
+    margin: 0 !important;
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+    text-align: left !important;
+  }
+
+  .app-shell--landing #navPanelHow .nav-panel__feature:not(.nav-panel__feature--review) p,
+  .app-shell--landing #navPanelIntegrations .nav-panel__feature:not(.nav-panel__feature--review) p {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    min-height: 0 !important;
+    width: auto !important;
+    margin: 0 !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+    text-align: left !important;
+    opacity: 1 !important;
+  }
+
+  /* Reviews — stacked cards, readable width */
+  .app-shell--landing .nav-panel__feature--review {
+    flex: none !important;
+    width: 100% !important;
+    padding: 10px 12px !important;
+    text-align: left !important;
+    border: 1px solid var(--cal-line, rgba(20, 18, 29, 0.1)) !important;
+    border-radius: 10px !important;
+    border-bottom: 1px solid var(--cal-line, rgba(20, 18, 29, 0.1)) !important;
+  }
+
+  .app-shell--landing .nav-panel__feature--review .nav-panel__review-quote {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+    text-align: left !important;
+  }
+
+  .app-shell--landing .nav-panel__lead.nav-panel__lead--reviews {
+    font-size: 1rem !important;
+    margin-bottom: 10px !important;
+    padding-bottom: 8px !important;
+  }
+
+  /* FAQ — compact Q&A blocks */
+  .app-shell--landing .nav-panel__faq {
+    gap: 6px !important;
+  }
+
+  .app-shell--landing .nav-panel__faq-item {
+    padding: 8px 10px !important;
+  }
+
+  .app-shell--landing .nav-panel__faq-q {
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+  }
+
+  .app-shell--landing .nav-panel__faq-a {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+  }
+
+  /* Footer CTA — slimmer on tour panels */
+  .app-shell--landing .nav-panel__foot {
+    padding: 8px 14px 12px !important;
+  }
+
+  .app-shell--landing .nav-panel__foot-card {
+    padding: 8px 10px !important;
+    gap: 10px !important;
+  }
+
+  .app-shell--landing .nav-panel__foot-eyebrow {
+    font-size: 10px !important;
+  }
+
+  .app-shell--landing .nav-panel__foot-hint {
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+  }
+
+  .app-shell--landing .nav-panel__foot-hint::before {
+    display: none !important;
+  }
+}
+
+/* Very short phones — tighten tour panels further */
+@media (max-width: 860px) and (max-height: 700px) {
+  .app-shell--landing .nav-panel__head {
+    padding: 10px 12px 8px !important;
+  }
+
+  .app-shell--landing .nav-panel__h {
+    font-size: 1.125rem !important;
+  }
+
+  .app-shell--landing .nav-panel__lead {
+    font-size: 12px !important;
+    margin-bottom: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .app-shell--landing #navPanelHow .nav-panel__features,
+  .app-shell--landing #navPanelIntegrations .nav-panel__features {
+    gap: 4px !important;
+  }
+
+  .app-shell--landing #navPanelHow .nav-panel__feature:not(.nav-panel__feature--review),
+  .app-shell--landing #navPanelIntegrations .nav-panel__feature:not(.nav-panel__feature--review) {
+    padding: 6px 8px !important;
+  }
+
+  .app-shell--landing #navPanelHow .nav-panel__feature-h,
+  .app-shell--landing #navPanelIntegrations .nav-panel__feature-h {
+    font-size: 11px !important;
+  }
+
+  .app-shell--landing #navPanelHow .nav-panel__feature:not(.nav-panel__feature--review) p,
+  .app-shell--landing #navPanelIntegrations .nav-panel__feature:not(.nav-panel__feature--review) p {
+    font-size: 10px !important;
+    line-height: 1.35 !important;
+  }
+
+  .app-shell--landing .nav-panel__foot {
+    padding: 6px 12px 10px !important;
+  }
+}
+
+/* Nav panel footer voice button — tap feedback (loads last) */
+.app-shell--landing button.nav-panel__foot-card.is-tap-active:not(:disabled) {
+  transform: translateY(2px) scale(0.965) !important;
+  box-shadow:
+    inset 0 2px 8px rgba(12, 15, 20, 0.1),
+    var(--cal-shadow-whisper, 0 1px 2px rgba(12, 15, 20, 0.06)) !important;
+}
+
+.app-shell--landing button.nav-panel__foot-card.is-tap-active:not(:disabled) .nav-panel__foot-signal {
+  transform: scale(0.82) !important;
+}
+
+.app-shell--landing button.nav-panel__foot-card.is-tap-active:not(:disabled) .nav-panel__foot-orbit {
+  animation: nav-panel-foot-signal-tap 0.34s cubic-bezier(0.22, 1, 0.36, 1) !important;
+  filter: brightness(1.1) !important;
+}
+
+.app-shell--landing button.nav-panel__foot-card.is-voice-live.is-tap-active:not(:disabled) .nav-panel__foot-orbit {
+  animation-name: nav-panel-foot-signal-tap-live !important;
+}
+
+.app-shell--landing button.nav-panel__foot-card.is-voice-connecting.is-tap-active:not(:disabled) .nav-panel__foot-orbit {
+  animation-name: nav-panel-foot-signal-tap-connecting !important;
+}
+
+/* Idle hint — expanding ring so the footer voice CTA reads as clickable */
+@keyframes nav-panel-foot-signal-ring-idle {
+  0% {
+    transform: scale(0.88);
+    opacity: 0.75;
+  }
+
+  75%,
+  100% {
+    transform: scale(1.42);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell--landing button.nav-panel__foot-card:not(:disabled):not(.is-voice-live):not(.is-voice-connecting):not(.is-tap-active)
+    .nav-panel__foot-signal::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2px solid rgba(201, 30, 30, 0.42);
+    pointer-events: none;
+    animation: nav-panel-foot-signal-ring-idle 2.2s ease-out infinite;
+  }
+
+  .app-shell--landing button.nav-panel__foot-card.is-voice-connecting:not(.is-tap-active) .nav-panel__foot-signal::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2px solid rgba(217, 119, 6, 0.55);
+    pointer-events: none;
+    animation: nav-panel-foot-signal-ring-connecting 1.3s ease-out infinite;
+  }
+
+  .app-shell--landing button.nav-panel__foot-card.is-voice-live:not(:disabled):not(.is-tap-active) .nav-panel__foot-signal::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2px solid rgba(13, 159, 110, 0.55);
+    pointer-events: none;
+    animation: nav-panel-foot-signal-ring-live 1.7s ease-out infinite;
+  }
+}
+
+@keyframes nav-panel-foot-signal-ring-connecting {
+  0% {
+    transform: scale(0.86) rotate(0deg);
+    opacity: 0.9;
+  }
+
+  100% {
+    transform: scale(1.45) rotate(90deg);
+    opacity: 0;
+  }
+}
+
+@keyframes nav-panel-foot-signal-ring-live {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.85;
+  }
+
+  70%,
+  100% {
+    transform: scale(1.48);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell--landing button.nav-panel__foot-card:not(:disabled):not(.is-voice-live):not(.is-voice-connecting)
+    .nav-panel__foot-orbit {
+    box-shadow: 0 0 0 3px rgba(201, 30, 30, 0.22) !important;
+  }
+
+  .app-shell--landing button.nav-panel__foot-card.is-voice-connecting .nav-panel__foot-orbit {
+    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.28) !important;
+  }
+
+  .app-shell--landing button.nav-panel__foot-card.is-voice-live:not(:disabled) .nav-panel__foot-orbit {
+    box-shadow: 0 0 0 3px rgba(13, 159, 110, 0.32), 0 0 14px rgba(13, 159, 110, 0.28) !important;
+  }
+}

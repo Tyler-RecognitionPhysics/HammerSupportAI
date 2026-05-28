@@ -1,0 +1,4 @@
+# Never bake local secrets into Fly image — use `fly secrets` instead.
+.env
+.env.*
+!.env.example
