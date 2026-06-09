@@ -15,6 +15,12 @@ from typing import Any
 
 import httpx
 
+from hubspot_budget import (
+    HubSpotBudgetExceeded,
+    consume as _consume_hubspot_budget,
+    remaining_today as _hubspot_budget_remaining,
+)
+
 _log = logging.getLogger(__name__)
 
 _HUBSPOT_API = "https://api.hubapi.com"
@@ -66,10 +72,16 @@ def _knowledge_base_id() -> str:
     return os.environ.get("HUBSPOT_KNOWLEDGE_BASE_ID", "206977575318").strip()
 
 
+def _is_serverless() -> bool:
+    return os.environ.get("SUPPORT_SERVERLESS", "").strip().lower() in ("1", "true", "yes")
+
+
 def _state_db_path() -> Path:
     override = os.environ.get("SUPPORT_HUBSPOT_STATE_DB", "").strip()
     if override:
         return Path(override).expanduser().resolve()
+    if _is_serverless():
+        return Path("/tmp/realtime-support-demo/hubspot_kb_sync.sqlite")
     return _repo_root() / "knowledge_support" / "data" / "hubspot_kb_sync.sqlite"
 
 
@@ -196,6 +208,7 @@ async def _search_article_ids_v2(
     for term in _SEARCH_TERMS:
         offset = 0
         while True:
+            _consume_hubspot_budget(1)
             resp = await client.get(
                 f"{_HUBSPOT_API}/contentsearch/v2/search",
                 headers=headers,
@@ -233,6 +246,7 @@ async def _search_article_ids_v3(
     for term in _SEARCH_TERMS:
         offset = 0
         while True:
+            _consume_hubspot_budget(1)
             resp = await client.get(
                 f"{_HUBSPOT_API}/cms/v3/site-search/search",
                 headers=headers,
@@ -287,6 +301,7 @@ async def _fetch_indexed_article(
     headers: dict[str, str],
     article_id: str,
 ) -> dict[str, Any] | None:
+    _consume_hubspot_budget(1)
     resp = await client.get(
         f"{_HUBSPOT_API}/cms/v3/site-search/indexed-data/{article_id}",
         headers=headers,
@@ -393,6 +408,13 @@ async def run_hubspot_kb_sync_async(*, fetch_public_html: bool = True) -> dict[s
             "error": "Set HUBSPOT_PRIVATE_APP_TOKEN (or HUBSPOT_ACCESS_TOKEN) in server/.env",
         }
 
+    if _hubspot_budget_remaining() <= 0:
+        return {
+            "ok": False,
+            "budget_paused": True,
+            "error": "Daily HubSpot API budget reached — KB sync paused until tomorrow (UTC).",
+        }
+
     headers = {"Authorization": f"Bearer {token}"}
     raw_dir = _raw_hubspot_dir()
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -404,6 +426,12 @@ async def run_hubspot_kb_sync_async(*, fetch_public_html: bool = True) -> dict[s
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             search_api, search_hits = await _search_article_ids(client, headers)
+        except HubSpotBudgetExceeded:
+            return {
+                "ok": False,
+                "budget_paused": True,
+                "error": "Daily HubSpot API budget reached during KB search — paused until tomorrow (UTC).",
+            }
         except Exception as exc:
             _log.exception("hubspot search failed")
             return {"ok": False, "error": str(exc)}
@@ -415,6 +443,9 @@ async def run_hubspot_kb_sync_async(*, fetch_public_html: bool = True) -> dict[s
             }
 
         for article_id, hit in search_hits.items():
+            if _hubspot_budget_remaining() <= 0:
+                errors.append("Paused: daily HubSpot budget reached during KB enrichment.")
+                break
             try:
                 fields: dict[str, Any]
                 if hit.get("description") is not None or hit.get("domain"):

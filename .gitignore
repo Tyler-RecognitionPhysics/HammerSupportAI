@@ -31,3 +31,11 @@ Thumbs.db
 *.swp
 .idea/
 .vercel
+
+# Databases
+knowledge_support/data/*.sqlite
+knowledge_support/data/*.sqlite-journal
+!knowledge_support/data/support_kb.sqlite
+!knowledge_support/data/hubspot_kb_sync.sqlite
+!knowledge_support/data/hubspot_tickets_sync.sqlite
+!knowledge_support/data/slack_sync.sqlite

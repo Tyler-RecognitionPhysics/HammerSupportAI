@@ -486,3 +486,9 @@ check inbox. I sent it to you directly!
 Here are some links to examples: <https://dashboard.hammer-corp.com/kerback-auto/leads/messages/cf9b7fc9-f267-477f-bebf-93f2f94010bf> and <https://dashboard.hammer-corp.com/kerback-auto/leads/messages/39dae906-7a76-4475-86e8-0217c004e271>.
 
 <!-- slack:1738703139.284979 -->
+
+### Can we still do overlays on photos?
+
+We cannot. At least we can’t export them to use anywhere (CL/AIA etc).
+
+<!-- slack:1780437225.970589 -->

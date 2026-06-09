@@ -645,3 +645,9 @@ Here is the current screenshot of VIN Solutions: https://hammercorp.slack.com/fi
 See last picture - we push the same info as we send in a leadstream email - it comes as an attachment, like in second attachment, and goes into their CRM the same exact way.
 
 <!-- slack:1738778605.778309 -->
+
+### Is the marketposter one that needs to go to AIA?
+
+It will depend on them; it was just my suggestion to sell them a lead generator instead since they did not want HD.
+
+<!-- slack:1779990291.030669 -->

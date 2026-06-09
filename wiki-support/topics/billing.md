@@ -130,3 +130,9 @@ It's going to be different by each individual dealer. What they're given to spen
 Here are some examples of conversations regarding credit approval: [Example 1](https://dashboard.hammer-corp.com/auto-credit-solutions-llc/leads/messages/373bc3cf-44ad-4e63-993f-6a7f6820d09e), [Example 2](https://dashboard.hammer-corp.com/auto-credit-solutions-llc/leads/messages/30f98683-5c09-4759-88cc-ba91ef395381), [Example 3](https://dashboard.hammer-corp.com/auto-credit-solutions-llc/leads/messages/a2f765e3-b6f3-4253-9003-6e1f68bf9166), [Example 4](https://dashboard.hammer-corp.com/auto-credit-solutions-llc/leads/messages/c01043ba-304b-4d53-8a78-eb3ebcd98c80).
 
 <!-- slack:1741964519.268129 -->
+
+### The rep who signed up no longer works there and couldnt get me to anyone - should we just FQC the AIA and let the HD ride?
+
+It's best to FQC the AIA and let the HD ride, but confirm if the rep's card on file for HD is an issue.
+
+<!-- slack:1780348935.661219 -->

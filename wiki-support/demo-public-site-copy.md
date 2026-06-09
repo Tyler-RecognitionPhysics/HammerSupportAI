@@ -122,13 +122,25 @@ End call
 
 Help Center
 
+## rt_header_support_label
+
+Support
+
+## rt_header_brand_aria
+
+Hammer Support
+
 ## rt_hero_headline_simple
 
 We're here to help
 
 ## rt_hero_chat_hint
 
-Ask Hannah a question — get wiki-grounded answers right here.
+Need help with Hammer? Hannah is Hammer's support AI. Get answers fast.
+
+## rt_hero_voice_hint
+
+Talk to Hannah, Hammer's support AI.
 
 ## rt_search_placeholder
 

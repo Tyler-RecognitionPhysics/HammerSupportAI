@@ -118,3 +118,15 @@ DCS is a website provider, feed provider, and sometimes acts as a dealer's CRM, 
 You should be able to search in HubSpot with these filters. Franchise and by state should be available in the filters on HubSpot.
 
 <!-- slack:1739560510.944799 -->
+
+### TN is not working for me
+
+Thank you!
+
+<!-- slack:1780588187.860969 -->
+
+### What did he say was the issue?
+
+His main complaints were that the lead volume he has seen from us has practically halved and the ones we are sending are low quality and not converting.
+
+<!-- slack:1780586223.098059 -->

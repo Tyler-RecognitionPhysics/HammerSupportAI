@@ -5,8 +5,8 @@
   "outputDirectory": "demo/realtime-support-demo/web/dist",
   "functions": {
     "api/support-index.py": {
-      "maxDuration": 60,
-      "includeFiles": "{wiki-support/**,knowledge_support/**,demo/realtime-support-demo/server/**,demo/realtime-support-demo/web/src/*.ts,demo/shared/**,raw/support-data/**}"
+      "maxDuration": 300,
+      "includeFiles": "{wiki-support/**,knowledge/**,knowledge_support/**,demo/realtime-support-demo/server/**,demo/realtime-support-demo/web/src/*.ts,demo/shared/**,raw/support-data/**}"
     }
   },
   "rewrites": [

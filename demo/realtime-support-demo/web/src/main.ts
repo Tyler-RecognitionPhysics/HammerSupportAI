@@ -1,27 +1,94 @@
 ﻿import { Conversation } from "@elevenlabs/client";
+import { startSearchPlaceholderTyper, type SearchPlaceholderTyperHandle } from "./search-placeholder-typer";
 import "./support.css";
 
 type SiteCopy = Record<string, string>;
 type UiState = "idle" | "connecting" | "live" | "error";
+type SupportMode = "chat" | "voice";
+type TicketSubmitState = "idle" | "submitting" | "success" | "error";
+type SupportNoticeTone = "resolved" | "followup" | "error";
+
+type TicketFormData = {
+  dealership: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  issue_category: string;
+  message: string;
+};
+
+// Mirrors the category options on https://www.hammertime.com/help
+const TICKET_CATEGORIES: readonly string[] = [
+  "AI responses",
+  "Facebook / TikTok Advertising",
+  "CRM / Lead Integrations",
+  "Billing",
+  "Inventory",
+  "Help with logging in",
+  "Cancellation Request",
+  "Sales / Demo",
+  "Other",
+];
+
+type ChatResponse = {
+  reply?: string;
+  session_id?: string;
+  ticket_created?: boolean;
+  resolved?: boolean;
+  escalated?: boolean;
+  hubspot_ticket_id?: string;
+};
+
+type IssueStarter = {
+  label: string;
+  prompt: string;
+};
 
 let siteCopy: SiteCopy = {};
 let uiState: UiState = "idle";
+let supportMode: SupportMode = "chat";
 let statusText = "";
 let errorDetail = "";
 let transcript: { role: "user" | "agent"; text: string }[] = [];
 let chatMessages: { role: "user" | "assistant"; content: string }[] = [];
+let chatSessionId = "";
 let chatBusy = false;
 let chatInputDraft = "";
 let focusChatInput = false;
 let voiceConv: Conversation | null = null;
 let voiceCallEpoch = 0;
+let searchPlaceholderTyper: SearchPlaceholderTyperHandle | null = null;
+let showTicketForm = false;
+let ticketSubmitState: TicketSubmitState = "idle";
+let ticketSubmitMessage = "";
+let manualTicketSessionId = "";
+let supportNotice: { tone: SupportNoticeTone; text: string } | null = null;
+let ticketForm: TicketFormData = {
+  dealership: "",
+  first_name: "",
+  last_name: "",
+  email: "",
+  phone: "",
+  issue_category: "",
+  message: "",
+};
 
 function voiceConnectErrorMessage(raw: string): string {
   const msg = raw.trim();
   if (!msg) {
+    const onVercel = /vercel\.app/i.test(location.hostname);
     return copy(
       "rt_error_voice_connect",
-      "Voice disconnected before the call started. Check that ngrok is running (port 8781) and your ElevenLabs agent Custom LLM URL matches it.",
+      onVercel
+        ? "Voice disconnected before Hannah could speak. Confirm ElevenLabs Custom LLM URL is https://hammer-support-ai-final.vercel.app/api/elevenlabs/llm and retry."
+        : "Voice disconnected before the call started. Check that ngrok is running (port 8781) and your ElevenLabs agent Custom LLM URL matches it.",
+    );
+  }
+  if (/custom_llm|failed to generate response/i.test(msg)) {
+    return copy(
+      "rt_error_custom_llm",
+      "Voice could not reach the support AI server. In ElevenLabs, set Custom LLM URL to https://hammer-support-ai-final.vercel.app/api/elevenlabs/llm",
     );
   }
   if (/NotAllowedError|Permission denied|microphone/i.test(msg)) {
@@ -80,14 +147,61 @@ function escapeHtml(s: string): string {
 
 const ICON_VOICE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="23"/><line x1="8" x2="16" y1="23" y2="23"/></svg>`;
 
+const ICON_CHAT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>`;
+
 const SEND_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>`;
 
 const SEARCH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`;
+
+function issueStarters(): IssueStarter[] {
+  return [
+    {
+      label: copy("rt_issue_login", "Login help"),
+      prompt: copy("rt_issue_login_prompt", "I need help logging in to my Hammer account."),
+    },
+    {
+      label: copy("rt_issue_leads", "Lead delivery"),
+      prompt: copy("rt_issue_leads_prompt", "Leads are not arriving in my Hammer account."),
+    },
+    {
+      label: copy("rt_issue_billing", "Billing or account"),
+      prompt: copy("rt_issue_billing_prompt", "I have a billing or account question."),
+    },
+    {
+      label: copy("rt_issue_integrations", "Integrations"),
+      prompt: copy("rt_issue_integrations_prompt", "I need help with a Hammer integration."),
+    },
+    {
+      label: copy("rt_issue_products", "Product setup"),
+      prompt: copy("rt_issue_products_prompt", "I need help setting up or using a Hammer product."),
+    },
+  ];
+}
 
 function renderChat(): string {
   return chatMessages
     .map((m) => `<div class="chat__msg chat__msg--${m.role}">${escapeHtml(m.content)}</div>`)
     .join("");
+}
+
+function renderSupportNotice(): string {
+  if (!supportNotice) return "";
+  return `<p class="support-notice support-notice--${supportNotice.tone}" role="status">${escapeHtml(supportNotice.text)}</p>`;
+}
+
+function renderIssueStarters(live: boolean, connecting: boolean): string {
+  if (chatMessages.length > 0 || chatBusy || live || connecting) return "";
+  return `
+    <div class="help-quick" aria-label="${escapeHtml(copy("rt_issue_starters_label", "Common support topics"))}">
+      ${issueStarters()
+        .map(
+          (item) => `
+        <button class="help-quick__chip" type="button" data-issue-prompt="${escapeHtml(item.prompt)}">
+          ${escapeHtml(item.label)}
+        </button>`,
+        )
+        .join("")}
+    </div>`;
 }
 
 function renderHeroVoiceButton(live: boolean, connecting: boolean): string {
@@ -116,40 +230,161 @@ function renderHeroVoiceButton(live: boolean, connecting: boolean): string {
     </div>`;
 }
 
-function renderHeroChat(live: boolean, connecting: boolean): string {
+function renderModeSwitch(activeMode: SupportMode, live: boolean, connecting: boolean): string {
+  const lockToVoice = live || connecting;
+  const option = (mode: SupportMode, icon: string, title: string, sub: string): string => {
+    const isActive = activeMode === mode;
+    const isLocked = lockToVoice && mode === "chat";
+    return `
+      <button
+        type="button"
+        role="tab"
+        class="mode-switch__opt${isActive ? " is-active" : ""}"
+        data-mode="${mode}"
+        aria-selected="${isActive}"
+        ${isLocked ? "disabled" : ""}
+      >
+        <span class="mode-switch__icon">${icon}</span>
+        <span class="mode-switch__text">
+          <span class="mode-switch__title">${escapeHtml(title)}</span>
+          <span class="mode-switch__sub">${escapeHtml(sub)}</span>
+        </span>
+      </button>`;
+  };
+
+  return `
+    <div class="mode-switch" role="tablist" aria-label="${escapeHtml(copy("rt_mode_switch_label", "Choose how to reach Hannah"))}">
+      ${option("chat", ICON_CHAT, copy("rt_mode_chat_title", "Chat"), copy("rt_mode_chat_sub", "Type your question"))}
+      ${option("voice", ICON_VOICE, copy("rt_mode_voice_title", "Voice"), copy("rt_mode_voice_sub", "Talk it through"))}
+    </div>`;
+}
+
+function renderChatPanel(live: boolean, connecting: boolean): string {
   const chatActive = chatMessages.length > 0 || chatBusy;
   const assistantName = escapeHtml(copy("rt_assistant_name", "Hannah"));
   const disabled = live || connecting || chatBusy;
 
   return `
+    <div class="hero-chat__panel" role="tabpanel">
+      ${chatActive ? `
+      <div class="hero-chat__thread" id="hero-chat-thread" role="log" aria-live="polite" aria-relevant="additions">
+        ${renderChat()}
+        ${chatBusy ? `<p class="hero-chat__typing" role="status">${assistantName} is thinking…</p>` : ""}
+      </div>` : ""}
+      <form id="hero-chat-form" class="hero-chat__composer help-search" role="form" aria-label="Chat with ${assistantName}">
+        <input
+          id="help-search-input"
+          class="help-search__input"
+          type="text"
+          name="message"
+          placeholder="${escapeHtml(copy("rt_search_placeholder", "Ask a question about Hammer…"))}"
+          value="${escapeHtml(chatInputDraft)}"
+          autocomplete="off"
+          ${disabled ? "disabled" : ""}
+        />
+        <button class="help-search__btn help-search__btn--send" type="submit" aria-label="Send message" ${disabled ? "disabled" : ""}>
+          ${chatActive || chatInputDraft.trim() ? SEND_ICON : SEARCH_ICON}
+        </button>
+      </form>
+    </div>`;
+}
+
+function renderVoicePanel(live: boolean, connecting: boolean): string {
+  const headline = live
+    ? copy("rt_voice_panel_live", "You're connected — speak anytime.")
+    : connecting
+      ? copy("rt_status_connecting", "Connecting…")
+      : copy("rt_voice_panel_idle", "Start a live voice call with Hannah.");
+
+  return `
+    <div class="hero-chat__panel hero-chat__panel--voice" role="tabpanel">
+      <p class="voice-panel__headline">${escapeHtml(headline)}</p>
+      ${renderHeroVoiceButton(live, connecting)}
+      ${!live && !connecting ? `<p class="hero-chat__voice-hint">${escapeHtml(copy("rt_hero_voice_hint", "Talk to Hannah, Hammer's support AI."))}</p>` : ""}
+    </div>`;
+}
+
+function renderHeroChat(live: boolean, connecting: boolean): string {
+  const activeMode: SupportMode = live || connecting ? "voice" : supportMode;
+  const chatActive = activeMode === "chat" && (chatMessages.length > 0 || chatBusy);
+
+  return `
     <div class="hero-chat${chatActive ? " hero-chat--active" : ""}" data-hero-chat>
       <div class="hero-chat__shell">
-        ${chatActive ? `
-        <div class="hero-chat__thread" id="hero-chat-thread" role="log" aria-live="polite" aria-relevant="additions">
-          ${renderChat()}
-          ${chatBusy ? `<p class="hero-chat__typing" role="status">${assistantName} is thinking…</p>` : ""}
-        </div>` : ""}
-        <form id="hero-chat-form" class="hero-chat__composer help-search" role="form" aria-label="Chat with ${assistantName}">
-          <input
-            id="help-search-input"
-            class="help-search__input"
-            type="text"
-            name="message"
-            placeholder="${escapeHtml(copy("rt_search_placeholder", "Ask a question about Hammer…"))}"
-            value="${escapeHtml(chatInputDraft)}"
-            autocomplete="off"
-            ${disabled ? "disabled" : ""}
-          />
-          <button class="help-search__btn help-search__btn--send" type="submit" aria-label="Send message" ${disabled ? "disabled" : ""}>
-            ${chatActive || chatInputDraft.trim() ? SEND_ICON : SEARCH_ICON}
-          </button>
-        </form>
-        <footer class="hero-chat__footer">
-          ${renderHeroVoiceButton(live, connecting)}
-          ${!live && !connecting ? `<p class="hero-chat__voice-hint">${escapeHtml(copy("rt_hero_voice_hint", "Speak with Hannah for instant, wiki-grounded help."))}</p>` : ""}
-        </footer>
+        ${renderModeSwitch(activeMode, live, connecting)}
+        ${activeMode === "chat" ? renderChatPanel(live, connecting) : renderVoicePanel(live, connecting)}
       </div>
     </div>`;
+}
+
+function getManualTicketSessionId(): string {
+  if (!manualTicketSessionId) {
+    manualTicketSessionId = "manual_" + Math.random().toString(36).substring(2, 11) + "_" + Date.now();
+  }
+  return manualTicketSessionId;
+}
+
+function ticketField(name: keyof TicketFormData, label: string, attrs = ""): string {
+  return `
+    <label class="ticket-form__field">
+      <span>${escapeHtml(label)}</span>
+      <input
+        name="${name}"
+        value="${escapeHtml(ticketForm[name])}"
+        ${attrs}
+      />
+    </label>`;
+}
+
+function renderFallbackTicket(): string {
+  const opened = showTicketForm || ticketSubmitState === "success" || ticketSubmitState === "error";
+  return `
+    <section class="support-fallback" aria-label="${escapeHtml(copy("rt_ticket_fallback_label", "Support ticket fallback"))}">
+      <div class="support-fallback__copy">
+        <p class="support-fallback__eyebrow">${escapeHtml(copy("rt_ticket_fallback_eyebrow", "Prefer a form?"))}</p>
+        <h2>${escapeHtml(copy("rt_ticket_fallback_title", "Submit a ticket instead"))}</h2>
+        <p>${escapeHtml(copy("rt_ticket_fallback_desc", "Hannah is fastest, but you can leave the details and our support team will follow up."))}</p>
+      </div>
+      <button class="landing-cta landing-cta--secondary" id="btn-ticket-toggle" type="button" aria-expanded="${opened}">
+        ${escapeHtml(opened ? copy("rt_ticket_toggle_hide", "Hide ticket form") : copy("rt_ticket_toggle_show", "Open ticket form"))}
+      </button>
+      ${
+        opened
+          ? `
+        <form class="ticket-form" id="ticket-form">
+          <div class="ticket-form__grid">
+            ${ticketField("dealership", copy("rt_ticket_dealership", "Dealership name"), "required autocomplete=\"organization\"")}
+            ${ticketField("first_name", copy("rt_ticket_first_name", "First name"), "required autocomplete=\"given-name\"")}
+            ${ticketField("last_name", copy("rt_ticket_last_name", "Last name"), "required autocomplete=\"family-name\"")}
+            ${ticketField("email", copy("rt_ticket_email", "Hammer login email"), "required type=\"email\" autocomplete=\"email\"")}
+            ${ticketField("phone", copy("rt_ticket_phone", "Mobile number"), "required type=\"tel\" autocomplete=\"tel\"")}
+          </div>
+          <label class="ticket-form__field ticket-form__field--full">
+            <span>${escapeHtml(copy("rt_ticket_category", "Category"))}</span>
+            <select name="issue_category" required>
+              <option value="" ${ticketForm.issue_category ? "" : "selected"} disabled>${escapeHtml(copy("rt_ticket_category_placeholder", "Select a category"))}</option>
+              ${TICKET_CATEGORIES.map(
+                (cat) =>
+                  `<option value="${escapeHtml(cat)}" ${ticketForm.issue_category === cat ? "selected" : ""}>${escapeHtml(cat)}</option>`,
+              ).join("")}
+            </select>
+          </label>
+          <label class="ticket-form__field ticket-form__field--full">
+            <span>${escapeHtml(copy("rt_ticket_message", "What do you need help with?"))}</span>
+            <textarea name="message" required rows="4">${escapeHtml(ticketForm.message)}</textarea>
+          </label>
+          ${
+            ticketSubmitMessage
+              ? `<p class="ticket-form__status ticket-form__status--${ticketSubmitState}" role="status">${escapeHtml(ticketSubmitMessage)}</p>`
+              : ""
+          }
+          <button class="landing-cta" type="submit" ${ticketSubmitState === "submitting" ? "disabled" : ""}>
+            ${escapeHtml(ticketSubmitState === "submitting" ? copy("rt_ticket_submitting", "Submitting…") : copy("rt_ticket_submit", "Submit ticket"))}
+          </button>
+        </form>`
+          : ""
+      }
+    </section>`;
 }
 
 function renderTranscript(): string {
@@ -178,20 +413,15 @@ function renderSessionPanel(live: boolean): string {
     </section>`;
 }
 
-function renderHelpHeader(phone: string, phoneTel: string): string {
-  const phonePrefix = escapeHtml(copy("rt_phone_label", "Call"));
-  const phoneDisplay = escapeHtml(phone);
-  const phoneAria = escapeHtml(`${copy("rt_phone_label", "Call")} ${phone}`);
-
+function renderHelpHeader(): string {
   return `
       <header class="help-header">
         <div class="help-header__inner">
-          <a class="help-header__brand-link" href="/" aria-label="${escapeHtml(copy("rt_help_center_label", "Help Center"))}">
-            <span class="logo-img logo-img--hammer" role="img" aria-label="${escapeHtml(copy("rt_logo_text", "HAMMER"))}"></span>
-          </a>
-          <a class="help-header__phone" href="tel:+1${phoneTel}" aria-label="${phoneAria}">
-            <span class="help-header__phone-prefix">${phonePrefix}</span>
-            <span class="help-header__phone-number">${phoneDisplay}</span>
+          <a class="help-header__brand-link" href="/" aria-label="${escapeHtml(copy("rt_header_brand_aria", "Hammer Support"))}">
+            <span class="help-header__brand">
+              <span class="logo-img logo-img--hammer" role="img" aria-label="${escapeHtml(copy("rt_logo_text", "HAMMER"))}"></span>
+              <span class="help-header__support-label">${escapeHtml(copy("rt_header_support_label", "Support"))}</span>
+            </span>
           </a>
         </div>
       </header>`;
@@ -203,8 +433,6 @@ function render(): void {
 
   const live = uiState === "live";
   const connecting = uiState === "connecting";
-  const phone = copy("rt_phone_display", "(512) 883-1336");
-  const phoneTel = phone.replace(/\D/g, "");
   const showError = uiState === "error" && !!errorDetail;
 
   if (document.activeElement?.id === "help-search-input") {
@@ -213,19 +441,23 @@ function render(): void {
 
   app.innerHTML = `
     <div class="app-shell app-shell--landing">
-      ${renderHelpHeader(phone, phoneTel)}
+      ${renderHelpHeader()}
 
       <main class="landing-main">
         <section class="help-hero" aria-label="Chat with Hannah">
           <header class="help-hero__intro">
-            <h1 class="help-hero__title">${escapeHtml(copy("rt_hero_headline_simple", "We're here to help"))}</h1>
-            <p class="help-hero__lede">${escapeHtml(copy("rt_hero_chat_hint", "Ask Hannah a question — get wiki-grounded answers right here."))}</p>
+            <p class="help-hero__eyebrow">${escapeHtml(copy("rt_hero_eyebrow", "Current customer support"))}</p>
+            <h1 class="help-hero__title">${escapeHtml(copy("rt_hero_headline_simple", "Get help with your Hammer account"))}</h1>
+            <p class="help-hero__lede">${escapeHtml(copy("rt_hero_chat_hint", "Ask Hannah about login issues, lead delivery, billing, integrations, or product setup. If she cannot finish it, your ticket goes to Hammer support."))}</p>
           </header>
+          ${renderIssueStarters(live, connecting)}
           ${renderHeroChat(live, connecting)}
+          ${renderSupportNotice()}
           ${showError ? `<p class="help-session__error" role="alert">${escapeHtml(errorDetail)}</p>` : ""}
         </section>
 
         ${renderSessionPanel(live)}
+        ${renderFallbackTicket()}
       </main>
 
       <footer class="site-footer" role="contentinfo">
@@ -255,6 +487,49 @@ function render(): void {
     else if (!connecting) void startVoice();
   });
   document.getElementById("btn-end")?.addEventListener("click", () => void endVoice());
+  document.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.mode as SupportMode | undefined;
+      if (!mode || mode === supportMode || live || connecting) return;
+      supportMode = mode;
+      if (mode === "chat") focusChatInput = true;
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-issue-prompt]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const text = btn.dataset.issuePrompt?.trim() ?? "";
+      if (text) void sendChatWithText(text);
+    });
+  });
+  document.getElementById("btn-ticket-toggle")?.addEventListener("click", () => {
+    showTicketForm = !showTicketForm;
+    if (ticketSubmitState === "success" || ticketSubmitState === "error") {
+      ticketSubmitState = "idle";
+      ticketSubmitMessage = "";
+    }
+    render();
+  });
+  document.getElementById("ticket-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void submitTicketForm();
+  });
+  document
+    .querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      "#ticket-form input, #ticket-form textarea, #ticket-form select",
+    )
+    .forEach((field) => {
+      const sync = () => {
+        const name = field.name as keyof TicketFormData;
+        ticketForm = { ...ticketForm, [name]: field.value };
+        if (ticketSubmitState === "error") {
+          ticketSubmitState = "idle";
+          ticketSubmitMessage = "";
+        }
+      };
+      field.addEventListener("input", sync);
+      field.addEventListener("change", sync);
+    });
 
   const transcriptBody = document.getElementById("transcript-body");
   if (transcriptBody) transcriptBody.scrollTop = transcriptBody.scrollHeight;
@@ -267,6 +542,16 @@ function render(): void {
     const end = chatInput.value.length;
     chatInput.setSelectionRange(end, end);
     focusChatInput = false;
+  }
+
+  searchPlaceholderTyper?.stop();
+  searchPlaceholderTyper = null;
+  const animateSearchPlaceholder =
+    !live && !connecting && !chatBusy && !chatInputDraft && chatMessages.length === 0;
+  if (chatInput && animateSearchPlaceholder) {
+    searchPlaceholderTyper = startSearchPlaceholderTyper(chatInput, {
+      idlePlaceholder: copy("rt_search_placeholder", "Ask a question about Hammer…"),
+    });
   }
 }
 
@@ -300,18 +585,13 @@ async function startVoice(): Promise<void> {
   transcript = [];
   render();
   try {
-    const { token, greeting } = await getConversationToken();
+    const { token } = await getConversationToken();
     if (callEpoch !== voiceCallEpoch) return;
 
     const conv = await Conversation.startSession({
       conversationToken: token,
       connectionType: "webrtc",
       connectionDelay: { android: 0, ios: 0, default: 0 },
-      overrides: {
-        agent: {
-          firstMessage: greeting,
-        },
-      },
       onConnect: ({ conversationId }) => {
         if (callEpoch !== voiceCallEpoch) {
           void conv.endSession();
@@ -405,20 +685,41 @@ async function endVoice(): Promise<void> {
 
 async function sendChatWithText(text: string): Promise<void> {
   if (!text || chatBusy) return;
+  supportMode = "chat";
   chatBusy = true;
   chatMessages.push({ role: "user", content: text });
   chatInputDraft = "";
   focusChatInput = true;
   render();
+
+  if (!chatSessionId) {
+    chatSessionId = "chat_" + Math.random().toString(36).substring(2, 11) + "_" + Date.now();
+  }
+
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: chatMessages }),
+      body: JSON.stringify({ messages: chatMessages, session_id: chatSessionId }),
     });
     if (!res.ok) throw new Error(await res.text());
-    const data = (await res.json()) as { reply?: string };
+    const data = (await res.json()) as ChatResponse;
+    if (data.session_id) {
+      chatSessionId = data.session_id;
+    }
     chatMessages.push({ role: "assistant", content: data.reply || "No response." });
+    if (data.ticket_created) {
+      supportNotice =
+        data.resolved && !data.escalated
+          ? {
+              tone: "resolved",
+              text: copy("rt_ticket_logged_resolved", "This support session has been logged as resolved in HubSpot."),
+            }
+          : {
+              tone: "followup",
+              text: copy("rt_ticket_logged_followup", "A support ticket has been logged for Hammer follow-up."),
+            };
+    }
   } catch (err) {
     chatMessages.push({
       role: "assistant",
@@ -436,6 +737,64 @@ async function sendHeroChat(): Promise<void> {
   if (!text || chatBusy) return;
   chatInputDraft = "";
   await sendChatWithText(text);
+}
+
+async function submitTicketForm(): Promise<void> {
+  if (ticketSubmitState === "submitting") return;
+  ticketSubmitState = "submitting";
+  ticketSubmitMessage = copy("rt_ticket_submitting", "Submitting…");
+  render();
+
+  try {
+    const res = await fetch("/api/support/ticket", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...ticketForm,
+        session_id: getManualTicketSessionId(),
+        channel: "manual_form",
+        resolved: false,
+        issue_category: ticketForm.issue_category || "Other",
+      }),
+    });
+    const raw = await res.text();
+    let data: { ok?: boolean; error?: string } = {};
+    try {
+      data = raw ? (JSON.parse(raw) as { ok?: boolean; error?: string }) : {};
+    } catch {
+      data = {};
+    }
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.error || raw || "Ticket failed.");
+    }
+    ticketSubmitState = "success";
+    ticketSubmitMessage = copy(
+      "rt_ticket_success",
+      "Thanks — your ticket is logged. A Hammer representative will follow up as soon as possible.",
+    );
+    supportNotice = {
+      tone: "followup",
+      text: copy("rt_ticket_logged_followup", "A support ticket has been logged for Hammer follow-up."),
+    };
+    ticketForm = {
+      dealership: "",
+      first_name: "",
+      last_name: "",
+      email: "",
+      phone: "",
+      issue_category: "",
+      message: "",
+    };
+    manualTicketSessionId = "";
+  } catch (err) {
+    ticketSubmitState = "error";
+    ticketSubmitMessage =
+      err instanceof Error
+        ? err.message
+        : copy("rt_ticket_error", "Ticket submission failed. Please email support@hammertime.com.");
+  } finally {
+    render();
+  }
 }
 
 void loadSiteCopy().then(() => {

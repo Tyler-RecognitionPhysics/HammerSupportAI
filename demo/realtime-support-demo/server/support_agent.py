@@ -149,7 +149,7 @@ async def _run_tool_loop(
                     "messages": full,
                     "tools": tools,
                     "tool_choice": "auto",
-                    "temperature": 0.5,
+                    "temperature": 0.1,
                 },
             )
             resp.raise_for_status()
@@ -165,7 +165,7 @@ async def _run_tool_loop(
                     args = json.loads(fn.get("arguments") or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                result = executor.execute(name, args, session)
+                result = await executor.execute_tool(name, args, session)
                 full.append({"role": "tool", "tool_call_id": tc.get("id"), "content": result})
     return "I'm having a technical issue — a representative will reach out as soon as possible. You can also email support@hammertime.com."
 
@@ -180,19 +180,31 @@ async def handle_elevenlabs_llm(body: dict, get_retriever_fn: Callable) -> Strea
 
     if _is_opening_turn(messages):
         greeting = os.environ.get("SUPPORT_GREETING", SUPPORT_GREETING).strip() or SUPPORT_GREETING
+        _log.info("elevenlabs_llm opening turn call_id=%s", call_id)
         try:
             from support_dashboard_store import register_session_start
 
             register_session_start(call_id, channel="browser_voice")
         except Exception:
             pass
+
+        async def _instant_open() -> AsyncIterator[bytes]:
+            async for chunk in _sse_chunks(greeting, model):
+                yield chunk
+
         return StreamingResponse(
-            _sse_chunks(greeting, model),
+            _instant_open(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     session = SupportSession(call_id=call_id, channel="browser_voice")
+    try:
+        from support_dashboard_store import hydrate_support_session
+
+        hydrate_support_session(session, call_id)
+    except Exception:
+        pass
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     created = int(time.time())
 

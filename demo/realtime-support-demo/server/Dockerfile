@@ -1,32 +1,24 @@
-# Telephony + Hammer Office (Playwright) on Fly.io
-FROM mcr.microsoft.com/playwright/python:v1.49.1-jammy
+# Persistent HubSpot ticket sync + KB artifact host on Fly.io
+FROM python:3.12-slim
 
 WORKDIR /app/server
 
-COPY demo/realtime-sales-demo/server/requirements.txt ./
+COPY demo/realtime-support-demo/server/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY demo/realtime-sales-demo/server/ ./
-# pen-challenge + hammer browser prompt sources (read by voice_instructions.py)
-COPY demo/realtime-sales-demo/web/src/pen-challenge-instructions.ts /app/demo/realtime-sales-demo/web/src/
-COPY demo/realtime-sales-demo/web/src/hammer-sales-instructions.ts /app/demo/realtime-sales-demo/web/src/
-COPY demo/realtime-sales-demo/web/src/pen-challenge-close.ts /app/demo/realtime-sales-demo/web/src/
-COPY demo/realtime-sales-demo/web/src/voice-anti-narration.ts /app/demo/realtime-sales-demo/web/src/
-COPY demo/realtime-sales-demo/web/src/voice-contact-readback.ts /app/demo/realtime-sales-demo/web/src/
-COPY demo/shared/ /app/demo/shared/
-COPY wiki/ /app/wiki/
+COPY knowledge_support/ /app/knowledge_support/
 COPY knowledge/ /app/knowledge/
-COPY raw/hammer-data/ /app/raw/hammer-data/
-RUN python /app/knowledge/scripts/sync_sqlite.py --db /app/knowledge/data/company_kb.sqlite
+COPY wiki-support/ /app/wiki-support/
+COPY demo/realtime-support-demo/server/ /app/server/
+COPY demo/shared/ /app/demo/shared/
 
 ENV PYTHONUNBUFFERED=1
-ENV REALTIME_SALES_REPO_ROOT=/app
-ENV REALTIME_SALES_WIKI_DIR=/app/wiki
-ENV REALTIME_SALES_TELEPHONY=1
-ENV REALTIME_SALES_PRODUCTION=1
-ENV HAMMER_OFFICE_USE_PLAYWRIGHT=1
-ENV HAMMER_OFFICE_HEADLESS=1
-ENV HAMMER_OFFICE_INSTANT=1
+ENV PYTHONPATH=/app:/app/server:/app/demo/shared
+ENV SUPPORT_REPO_ROOT=/app
+ENV SUPPORT_DATA_DIR=/data
+ENV SUPPORT_RAW_DIR=/data/raw/support-data
+ENV SUPPORT_KB_DB=/data/support_kb.sqlite
+ENV SUPPORT_HUBSPOT_TICKETS_STATE_DB=/data/hubspot_tickets_sync.sqlite
 
-EXPOSE 8780
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8780"]
+EXPOSE 8782
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8782"]

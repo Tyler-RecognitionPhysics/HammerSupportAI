@@ -1,7 +1,8 @@
-# Fly.io app for always-on SIP webhook + tool sideband.
-# Deploy from repo root: fly deploy --config demo/realtime-sales-demo/fly.toml
+# Fly.io persistent host for HubSpot ticket sync + KB artifacts.
+# Deploy from HAMMERFINALSITE root:
+#   .\scripts\deploy-fly-support-sync.ps1
 
-app = "hammer-voice-telephony"
+app = "hammer-support-sync"
 primary_region = "iad"
 
 [build]
@@ -9,18 +10,21 @@ primary_region = "iad"
   context = "../.."
 
 [env]
-  REALTIME_SALES_TELEPHONY = "1"
-  REALTIME_SALES_PRODUCTION = "1"
-  REALTIME_SALES_REPO_ROOT = "/app"
-  REALTIME_SALES_PUBLIC_BASE_URL = "https://www.hammertime.com"
-  HAMMER_OFFICE_USE_PLAYWRIGHT = "1"
-  HAMMER_OFFICE_HEADLESS = "1"
-  HAMMER_OFFICE_INSTANT = "1"
+  SUPPORT_REPO_ROOT = "/app"
+  SUPPORT_DATA_DIR = "/data"
+  SUPPORT_RAW_DIR = "/data/raw/support-data"
+  SUPPORT_KB_DB = "/data/support_kb.sqlite"
+  SUPPORT_HUBSPOT_TICKETS_STATE_DB = "/data/hubspot_tickets_sync.sqlite"
+  # Automatic daily HubSpot ticket sync (incremental). 0 disables.
+  SUPPORT_AUTO_SYNC_INTERVAL_HOURS = "24"
+
+[mounts]
+  source = "support_sync_data"
+  destination = "/data"
 
 [http_service]
-  internal_port = 8780
+  internal_port = 8782
   force_https = true
-  # SIP webhooks must hit a warm machine — scale-to-zero drops incoming calls.
   auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
@@ -28,4 +32,4 @@ primary_region = "iad"
 [[vm]]
   memory = "2048mb"
   cpu_kind = "shared"
-  cpus = 2
+  cpus = 1

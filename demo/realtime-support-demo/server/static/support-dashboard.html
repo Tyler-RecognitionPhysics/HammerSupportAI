@@ -8,13 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/admin/support/dashboard.css?v=2" id="dashboardCss" />
+  <link rel="stylesheet" href="/admin/support/dashboard.css?v=13" id="dashboardCss" />
   <script>
     (function () {
       var link = document.getElementById("dashboardCss");
       link.href = location.pathname.indexOf("/debug/support-dashboard") !== -1
-        ? "/debug/support-dashboard.css?v=2"
-        : "/admin/support/dashboard.css?v=2";
+        ? "/debug/support-dashboard.css?v=13"
+        : "/admin/support/dashboard.css?v=13";
     })();
   </script>
 </head>
@@ -57,7 +57,10 @@
         <nav class="sidebar__nav" role="tablist">
           <button class="tab is-active" data-tab="overview" role="tab">Overview</button>
           <button class="tab" data-tab="sessions" role="tab">Sessions</button>
+          <button class="tab" data-tab="calendar" role="tab">Calendar</button>
           <button class="tab" data-tab="knowledge" role="tab">Knowledge</button>
+          <button class="tab" data-tab="cs-questions" role="tab">CS Questions</button>
+          <button class="tab" data-tab="qa" role="tab">Q&amp;A</button>
           <button class="tab" data-tab="settings" role="tab">Settings</button>
         </nav>
       </aside>
@@ -81,41 +84,62 @@
               </div>
             </div>
           </div>
-          <div class="card" style="margin-top:1rem">
-            <div class="card__head">Slack sync</div>
-            <div class="card__body" id="slackStatus">
-              <div class="empty">Loading…</div>
-            </div>
-            <div class="card__body" style="max-height:none;border-top:1px solid var(--border-light);padding-top:0.75rem">
-              <div class="btn-row" style="margin-top:0">
-                <button class="btn btn--primary btn--red" id="btnSlackSync" type="button">Sync channel</button>
-                <button class="btn btn--ghost" id="btnSlackBackfill" type="button">Full backfill</button>
+          <div class="card integrations" style="margin-top:1rem">
+            <div class="card__head">Integrations &amp; Sync</div>
+            <div class="integrations__list">
+              <div class="integration">
+                <div class="integration__main" id="slackStatus"><div class="empty">Loading…</div></div>
+                <div class="integration__actions">
+                  <button class="btn btn--sm btn--red" id="btnSlackSync" type="button">Sync</button>
+                  <button class="btn btn--sm btn--ghost" id="btnSlackBackfill" type="button">Backfill</button>
+                </div>
+                <p class="settings-note integration__result" id="slackSyncResult" hidden></p>
               </div>
-              <p class="settings-note" id="slackSyncResult" style="margin-top:0.75rem;margin-bottom:0" hidden></p>
-            </div>
-          </div>
-          <div class="card" style="margin-top:1rem">
-            <div class="card__head">HubSpot Knowledge Base</div>
-            <div class="card__body" id="hubspotKbStatus">
-              <div class="empty">Loading…</div>
-            </div>
-            <div class="card__body" style="max-height:none;border-top:1px solid var(--border-light);padding-top:0.75rem">
-              <p class="settings-note" style="margin-top:0;margin-bottom:0.75rem">Syncs articles from your HubSpot Help Center into the AI knowledge index.</p>
-              <div class="btn-row" style="margin-top:0">
-                <button class="btn btn--primary btn--red" id="btnHubspotKbSync" type="button">Sync HubSpot KB</button>
+              <div class="integration">
+                <div class="integration__main" id="hubspotKbStatus"><div class="empty">Loading…</div></div>
+                <div class="integration__actions">
+                  <button class="btn btn--sm btn--red" id="btnHubspotKbSync" type="button">Sync</button>
+                </div>
+                <p class="settings-note integration__result" id="hubspotKbSyncResult" hidden></p>
               </div>
-              <p class="settings-note" id="hubspotKbSyncResult" style="margin-top:0.75rem;margin-bottom:0" hidden></p>
+              <div class="integration">
+                <div class="integration__main" id="hubspotTicketsStatus"><div class="empty">Loading…</div></div>
+                <div class="integration__actions">
+                  <button class="btn btn--sm btn--red" id="btnHubspotTicketsSync" type="button">Sync</button>
+                  <button class="btn btn--sm btn--ghost" id="btnHubspotTicketsBackfill" type="button">Backfill</button>
+                </div>
+                <p class="settings-note integration__result" id="hubspotTicketsSyncResult" hidden></p>
+                <div class="sync-progress" id="hubspotTicketsProgress" hidden>
+                  <div class="sync-progress__head">
+                    <span class="sync-progress__phase" id="hubspotTicketsProgressPhase">Working…</span>
+                    <span class="sync-progress__pct" id="hubspotTicketsProgressPct"></span>
+                  </div>
+                  <div class="progressbar" id="hubspotTicketsProgressBar">
+                    <div class="progressbar__fill" id="hubspotTicketsProgressFill"></div>
+                  </div>
+                  <div class="sync-progress__msg" id="hubspotTicketsProgressMsg"></div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         <section class="panel" id="panel-sessions" role="tabpanel">
-          <div class="calls-toolbar">
-            <div class="calls-toolbar__meta" id="sessionsMeta">Loading sessions…</div>
+          <div class="sessions-toolbar">
+            <div class="filter-pills" id="sessionFilters" role="tablist" aria-label="Filter sessions">
+              <button class="filter-pill is-active" type="button" data-session-filter="all" role="tab">All <span class="filter-pill__count" id="cntAll">0</span></button>
+              <button class="filter-pill" type="button" data-session-filter="open" role="tab">Open <span class="filter-pill__count" id="cntOpen">0</span></button>
+              <button class="filter-pill" type="button" data-session-filter="resolved" role="tab">Resolved <span class="filter-pill__count" id="cntRes">0</span></button>
+              <button class="filter-pill" type="button" data-session-filter="escalated" role="tab">Escalated <span class="filter-pill__count" id="cntEsc">0</span></button>
+            </div>
+            <div class="sessions-toolbar__right">
+              <input type="search" class="sessions-search" id="sessionSearch" placeholder="Search channel, category…" autocomplete="off" aria-label="Search sessions" />
+              <span class="sessions-meta" id="sessionsMeta">Loading sessions…</span>
+            </div>
           </div>
-          <div class="card">
-            <div class="card__body" style="max-height:none;padding:0">
-              <table class="calls-table">
+          <div class="card sessions-card">
+            <div class="sessions-table-wrap">
+              <table class="calls-table sessions-table">
                 <thead>
                   <tr>
                     <th>Time</th>
@@ -123,6 +147,8 @@
                     <th>Category</th>
                     <th>Escalated</th>
                     <th>Resolved</th>
+                    <th>Ticket</th>
+                    <th class="sess-go-col" aria-hidden="true"></th>
                   </tr>
                 </thead>
                 <tbody id="sessionsBody"></tbody>
@@ -131,23 +157,52 @@
           </div>
         </section>
 
-        <section class="panel" id="panel-knowledge" role="tabpanel">
-          <div class="stats" id="kbStatGrid"></div>
-          <div class="card" style="margin-bottom:1rem">
-            <div class="card__head">Corpus details</div>
-            <div class="card__body" id="kbIndexMeta">
-              <div class="empty">Loading…</div>
+        <section class="panel" id="panel-calendar" role="tabpanel">
+          <div class="cal-toolbar">
+            <div class="cal-toolbar__nav">
+              <button class="cal-nav-btn" id="calPrev" type="button" aria-label="Previous">‹</button>
+              <button class="btn btn--sm" id="calToday" type="button">Today</button>
+              <button class="cal-nav-btn" id="calNext" type="button" aria-label="Next">›</button>
+              <h2 class="cal-title" id="calTitle">—</h2>
+            </div>
+            <div class="cal-toolbar__right">
+              <div class="cal-views" role="tablist" aria-label="Calendar view">
+                <button class="cal-view is-active" type="button" data-cal-view="month" role="tab">Month</button>
+                <button class="cal-view" type="button" data-cal-view="list" role="tab">Upcoming</button>
+              </div>
+              <select class="cal-select" id="calStatusFilter" aria-label="Filter by status">
+                <option value="">All statuses</option>
+                <option value="requested">Requested</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <button class="btn btn--sm btn--red" id="calNew" type="button">+ New callback</button>
             </div>
           </div>
+          <div class="stats cal-stats" id="calStatGrid"></div>
+          <div class="card cal-card" id="calMonthCard">
+            <div class="cal-weekdays" id="calWeekdays" aria-hidden="true"></div>
+            <div class="cal-grid" id="calGrid"></div>
+          </div>
+          <div class="card cal-list-card" id="calListCard" hidden>
+            <div class="cal-list" id="calList"></div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-knowledge" role="tabpanel">
+          <div class="stats" id="kbStatGrid"></div>
+          <div class="kb-source-summary" id="kbSourceSummary"></div>
           <nav class="kb-subnav" role="tablist" aria-label="Knowledge sections">
             <button class="kb-subnav__btn is-active" data-kb-tab="sources" role="tab">Sources</button>
-            <button class="kb-subnav__btn" data-kb-tab="search" role="tab">Test Search</button>
+            <button class="kb-subnav__btn" data-kb-tab="search" role="tab">Test AI</button>
             <button class="kb-subnav__btn" data-kb-tab="playbook" role="tab">Playbook</button>
           </nav>
 
           <div class="kb-panel" id="kb-panel-sources">
             <div class="kb-toolbar">
               <div class="kb-toolbar__meta" id="kbSourcesMeta">Loading…</div>
+              <p class="kb-toolbar__hint">Toggle <strong>AI</strong> on each source group to include or exclude it from Hannah’s search, chat, and voice answers.</p>
               <input type="search" class="kb-search-input" id="kbSourceFilter" placeholder="Filter by title, topic, or content…" autocomplete="off" />
             </div>
             <div id="kbDocList" class="kb-doc-list"></div>
@@ -155,12 +210,12 @@
 
           <div class="kb-panel" id="kb-panel-search" hidden>
             <div class="card">
-              <div class="card__head">Test Retrieval</div>
+              <div class="card__head">Test AI Response</div>
               <div class="card__body">
-                <p class="kb-hint">Enter a question to see what the support agent would retrieve from the wiki.</p>
+                <p class="kb-hint">Enter a customer question to see the exact reply Hannah would give and the knowledge sources used. First request may take up to a minute while the knowledge index loads.</p>
                 <div class="field-row">
                   <input type="text" class="kb-search-query" id="kbSearchQuery" placeholder="e.g. How do I reset my password?" autocomplete="off" />
-                  <button class="btn btn--primary" id="btnKbSearch" type="button">Search</button>
+                  <button class="btn btn--primary" id="btnKbSearch" type="button">Ask</button>
                 </div>
                 <div id="kbSearchResults" class="kb-search-results"></div>
               </div>
@@ -173,8 +228,114 @@
                 <div class="settings-section__label" style="margin-bottom:0.2rem">Learned Playbook</div>
                 <div class="kb-hint" id="kbPlaybookNote">Approved support answers.</div>
               </div>
+              <button type="button" class="btn btn--sm btn--primary btn--red" id="kbPlaybookAddToggle" hidden>+ Add answer</button>
             </div>
+
+            <form class="kb-playbook-add" id="kbPlaybookAddForm" hidden>
+              <label class="kb-playbook-add__label" for="kbPlaybookAddTitle">Question / topic</label>
+              <input type="text" id="kbPlaybookAddTitle" class="kb-playbook-add__input" placeholder="e.g. How do I reset my password?" autocomplete="off" />
+              <label class="kb-playbook-add__label" for="kbPlaybookAddBody">Approved answer Hannah should give</label>
+              <textarea id="kbPlaybookAddBody" class="kb-playbook-add__textarea" rows="4" placeholder="Write the exact answer Hannah should use for this question…"></textarea>
+              <div class="kb-playbook-add__foot">
+                <span class="kb-playbook-add__msg" id="kbPlaybookAddMsg"></span>
+                <div class="kb-playbook-add__actions">
+                  <button type="button" class="btn btn--sm" id="kbPlaybookAddCancel">Cancel</button>
+                  <button type="submit" class="btn btn--sm btn--primary btn--red" id="kbPlaybookAddSave">Add to playbook</button>
+                </div>
+              </div>
+            </form>
+
             <div id="kbPlaybookList" class="kb-playbook-list"></div>
+
+            <div class="kb-playbook-header" style="margin-top:1.5rem">
+              <div>
+                <div class="settings-section__label" style="margin-bottom:0.2rem">Pinned answer tickets</div>
+                <div class="kb-hint" id="kbTicketPinsNote">No pinned tickets yet.</div>
+              </div>
+            </div>
+            <div id="kbTicketPinsList" class="kb-pin-list"></div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-cs-questions" role="tabpanel">
+          <p class="settings-note" style="margin-top:0">
+            The top questions dealership customers actually ask, mined only from
+            <strong>customer-initiated</strong> tickets — inbound support-form submissions, emails,
+            chat messages, and inbound calls — then clustered by AI. Hammer-initiated work (account
+            reviews, onboarding, sales/upsell, and proactive outreach) is excluded so the list
+            reflects what customers contact you about. Use these to teach Hannah and prioritize
+            knowledge-base coverage.
+          </p>
+
+          <div class="card" style="margin-top:1rem">
+            <div class="card__body" style="max-height:none;display:flex;flex-wrap:wrap;align-items:center;gap:1rem;justify-content:space-between">
+              <div id="csqMeta" style="font-size:0.85rem;color:var(--text-muted);line-height:1.5">Loading…</div>
+              <div class="btn-row" style="margin:0">
+                <button class="btn btn--primary btn--red" id="btnCsqBuild" type="button">Build / Refresh</button>
+              </div>
+            </div>
+            <p class="settings-note" id="csqResult" style="margin:0 1rem 1rem;padding-top:0.25rem" hidden></p>
+          </div>
+
+          <div class="stats" id="csqStatGrid" style="margin-top:1rem"></div>
+
+          <div class="card" style="margin-top:1rem">
+            <div class="card__body" style="max-height:none;padding:0">
+              <div class="csq-groups-toolbar">
+                <span id="csqGroupsSummary" class="csq-groups-toolbar__summary"></span>
+                <div class="csq-groups-toolbar__actions">
+                  <button class="csq-linkbtn" id="csqExpandAll" type="button">Expand all</button>
+                  <span class="csq-groups-toolbar__sep">·</span>
+                  <button class="csq-linkbtn" id="csqCollapseAll" type="button">Collapse all</button>
+                </div>
+              </div>
+              <div id="csqGroups" class="csq-groups">
+                <div class="empty" style="padding:1.25rem 1rem">Not built yet — click Build / Refresh.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-qa" role="tabpanel">
+          <p class="settings-note" style="margin-top:0">
+            Write the canonical answer for the questions dealerships ask most. We surface the
+            <strong>top 3–5 questions in each category</strong> from CS Questions — Customer Support
+            fills in the answer once, and it becomes Hannah's source of truth for that topic.
+          </p>
+
+          <div class="card" style="margin-top:1rem">
+            <div class="card__body qa-summary">
+              <div id="qaMeta" class="qa-summary__meta">Loading…</div>
+              <div class="qa-summary__right">
+                <div class="qa-progress" id="qaProgressWrap" hidden>
+                  <div class="qa-progress__bar"><div class="qa-progress__fill" id="qaProgressFill"></div></div>
+                  <span class="qa-progress__label" id="qaProgressLabel"></span>
+                </div>
+                <div class="qa-filter">
+                  <button class="qa-filter__btn is-active" data-qa-filter="all" type="button">All</button>
+                  <button class="qa-filter__btn" data-qa-filter="unanswered" type="button">Unanswered</button>
+                  <button class="qa-filter__btn" data-qa-filter="drafts" type="button">AI drafts</button>
+                  <button class="qa-filter__btn" data-qa-filter="answered" type="button">Answered</button>
+                </div>
+              </div>
+            </div>
+            <div class="card__body qa-actions">
+              <div class="qa-actions__info">
+                <span id="qaGenStatus" class="qa-gen-status"></span>
+              </div>
+              <div class="qa-actions__btns">
+                <button class="btn btn--sm btn--ghost" id="btnQaApproveAll" type="button" hidden>Approve all drafts</button>
+                <button class="btn btn--sm btn--ghost" id="btnQaGenCancel" type="button" hidden>Stop</button>
+                <button class="btn btn--sm btn--primary btn--red" id="btnQaGenerate" type="button">
+                  <span class="qa-gen-spinner" aria-hidden="true"></span>
+                  <span class="btn__label">Draft answers with AI</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="qaBoard" class="qa-board">
+            <div class="empty">Loading…</div>
           </div>
         </section>
 
@@ -221,24 +382,185 @@
     </div>
   </div>
 
+
+  <div class="call-modal" id="sessionDetailModal" hidden aria-hidden="true">
+    <div class="call-modal__backdrop" id="sessionDetailBackdrop" aria-hidden="true"></div>
+    <div class="call-modal__panel" id="sessionDetailPanel" style="width: min(820px, 100%); max-height: min(88vh, 920px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); background: var(--surface);">
+      <!-- Header -->
+      <div class="kb-doc-preview__head">
+        <div class="kb-doc-preview__intro">
+          <div class="kb-doc-preview__title" id="sessionDetailTitle" style="font-family: var(--font-serif, 'Fraunces', Georgia, serif); font-size: 1.1rem; font-weight: 600; color: var(--text);">Session details</div>
+          <div class="kb-doc-preview__meta" id="sessionDetailMeta" style="margin-top: 0.25rem; font-size: 0.75rem; color: var(--text-muted);">Loading...</div>
+        </div>
+        <button type="button" class="kb-doc-preview__close" id="sessionDetailClose" aria-label="Close details">✕</button>
+      </div>
+      <!-- Body -->
+      <div style="flex: 1; overflow-y: auto; padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+        <!-- Metrics / Summary -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem;">
+          <div class="stat" style="padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);">
+            <div class="stat__label" style="font-size: 0.75rem; color: var(--text-muted);">Channel</div>
+            <div id="sessionDetailChannel" style="font-size: 1.1rem; font-weight: 600; margin-top: 0.25rem; color: var(--text);">—</div>
+          </div>
+          <div class="stat" style="padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);">
+            <div class="stat__label" style="font-size: 0.75rem; color: var(--text-muted);">Category</div>
+            <div id="sessionDetailCategory" style="font-size: 1.1rem; font-weight: 600; margin-top: 0.25rem; color: var(--text);">—</div>
+          </div>
+          <div class="stat" style="padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);">
+            <div class="stat__label" style="font-size: 0.75rem; color: var(--text-muted);">Escalated</div>
+            <div id="sessionDetailEscalated" style="font-size: 1.1rem; font-weight: 600; margin-top: 0.25rem; color: var(--text);">—</div>
+          </div>
+          <div class="stat" style="padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);">
+            <div class="stat__label" style="font-size: 0.75rem; color: var(--text-muted);">Resolved</div>
+            <div id="sessionDetailResolved" style="font-size: 1.1rem; font-weight: 600; margin-top: 0.25rem; color: var(--text);">—</div>
+          </div>
+          <div class="stat" style="padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);">
+            <div class="stat__label" style="font-size: 0.75rem; color: var(--text-muted);">HubSpot ticket</div>
+            <div id="sessionDetailTicket" style="font-size: 1.1rem; font-weight: 600; margin-top: 0.25rem; color: var(--text);">—</div>
+          </div>
+        </div>
+
+        <!-- AI Summary / Overview -->
+        <div id="sessionSummaryCard" style="display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);">
+          <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">AI Summary</div>
+          <div id="sessionSummaryText" style="line-height: 1.5; font-size: 0.95rem; color: var(--text);">—</div>
+        </div>
+
+        <!-- Transcript -->
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Transcript</div>
+          <div id="sessionDetailTranscript" style="display: flex; flex-direction: column; gap: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 1rem; max-height: 380px; overflow-y: auto;">
+            <!-- Render turns here -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="call-modal" id="apptModal" hidden aria-hidden="true">
+    <div class="call-modal__backdrop" data-appt-close aria-hidden="true"></div>
+    <div class="call-modal__panel appt-modal__panel" role="dialog" aria-modal="true" aria-labelledby="apptModalTitle">
+      <div class="kb-doc-preview__head">
+        <div class="kb-doc-preview__intro">
+          <div class="kb-doc-preview__title" id="apptModalTitle">New callback</div>
+          <div class="kb-doc-preview__meta">Schedule a time for a Hammer specialist to reach out and help with the customer's account.</div>
+        </div>
+        <button type="button" class="kb-doc-preview__close" data-appt-close aria-label="Close">✕</button>
+      </div>
+      <form id="apptForm" class="appt-form">
+        <input type="hidden" name="id" />
+        <div class="appt-grid">
+          <label class="appt-field appt-field--wide">
+            <span>Dealership</span>
+            <input name="dealership_name" type="text" autocomplete="off" required />
+          </label>
+          <label class="appt-field">
+            <span>First name</span>
+            <input name="first_name" type="text" autocomplete="off" required />
+          </label>
+          <label class="appt-field">
+            <span>Last name</span>
+            <input name="last_name" type="text" autocomplete="off" required />
+          </label>
+          <label class="appt-field">
+            <span>Phone</span>
+            <input name="phone" type="tel" autocomplete="off" placeholder="+1 555 123 4567" required />
+          </label>
+          <label class="appt-field">
+            <span>Email</span>
+            <input name="email" type="email" autocomplete="off" />
+          </label>
+          <label class="appt-field">
+            <span>Date &amp; time</span>
+            <input name="requested_at_local" type="datetime-local" required />
+          </label>
+          <label class="appt-field appt-field--sm">
+            <span>Duration (min)</span>
+            <input name="duration_min" type="number" min="5" step="5" value="30" />
+          </label>
+          <label class="appt-field appt-field--sm">
+            <span>Status</span>
+            <select name="status">
+              <option value="requested">Requested</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+          <label class="appt-field appt-field--wide">
+            <span>What they need help with</span>
+            <textarea name="reason" rows="3"></textarea>
+          </label>
+          <label class="appt-field appt-field--wide">
+            <span>Internal notes</span>
+            <textarea name="notes" rows="2"></textarea>
+          </label>
+        </div>
+        <p class="settings-note appt-error" id="apptError" hidden></p>
+      </form>
+      <div class="appt-foot">
+        <button class="btn btn--ghost appt-foot__delete" id="apptDelete" type="button" hidden>Delete</button>
+        <span class="appt-foot__spacer"></span>
+        <button class="btn" data-appt-close type="button">Cancel</button>
+        <button class="btn btn--red" id="apptSave" type="button">Save callback</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script>
     const API = "/api/admin/support";
     const TOKEN_KEY = "support_admin_token";
-    const PAGE_TITLES = { overview: "Overview", sessions: "Sessions", knowledge: "Knowledge", settings: "Settings" };
+    const PAGE_TITLES = { overview: "Overview", sessions: "Sessions", calendar: "Calendar", knowledge: "Knowledge", "cs-questions": "CS Questions", qa: "Questions & Answers", settings: "Settings" };
+    let csqPollTimer = null;
+    let ticketsPollTimer = null;
+    let csqData = null;
+    let csqOpenGroups = new Set();
+    let csqGroupsInitialized = false;
     let token = sessionStorage.getItem(TOKEN_KEY) || "";
     let cachedCalls = [];
+    let sessionFilter = "all";
     let cachedKbDocs = [];
-    let kbExpandedGroups = new Set();
-    const KB_SOURCE_ORDER = ["Wiki", "HubSpot KB", "Playbook", "Slack", "Upload"];
+    let cachedGroupTotals = {};
+    let cachedTicketTotal = 0;
+    let kbTicketOffset = 0;
+    const KB_TICKET_PAGE = 200;
+    let kbEmailTicketTotal = 0;
+    let kbEmailTicketDocs = [];
+    let kbEmailTicketOffset = 0;
+    let kbEmailTicketLoading = false;
+    let kbEmailReloadPending = false;
+    let kbTicketPins = [];
+    let kbPlaybookEditable = true;
+    function pinnedDocIdSet() {
+      return new Set((kbTicketPins || []).map((p) => p.ticket_doc_id));
+    }
+    let kbEmailGroupOpen = false;
+    let kbEmailTicketQuery = "";
+    let kbEmailSearchTimer = null;
+    const KB_EMAIL_PAGE = 100;
+    let kbOpenGroups = new Set();
+    let kbShowAllGroups = new Set();
+    const KB_SOURCE_ORDER = ["Wiki", "HubSpot KB", "Playbook", "Slack", "HubSpot Resolved Tickets", "Upload"];
+    let kbEnabledSources = Object.fromEntries(KB_SOURCE_ORDER.map((s) => [s, true]));
     const KB_SOURCE_HINTS = {
       "Wiki": "Curated support pages and synthesized topic Q&A.",
       "HubSpot KB": "Help Center articles synced from HubSpot.",
       "Playbook": "Admin-approved answers Hannah can cite directly.",
       "Slack": "Support channel threads indexed for retrieval.",
-      "Upload": "Manual uploads and other raw imports.",
+      "HubSpot Resolved Tickets": "Closed Help Desk tickets with full timeline (emails, notes, calls, transcripts).",
+      "Upload": "Manual uploads from the dashboard.",
     };
+
+    function kbSourceLabel(label) {
+      if (label === "Upload" || label === "HubSpot Tickets") return "HubSpot Resolved Tickets";
+      return label || "Other";
+    }
+
+    function kbSourceKey(label) {
+      return kbSourceLabel(label);
+    }
     const KB_COLLAPSE_LIMIT = 20;
 
     const $ = (sel) => document.querySelector(sel);
@@ -336,22 +658,20 @@
 
     function renderStats(data, calls) {
       const s = data.stats || {};
-      const slack = data.slack_sync || {};
       const active = s.active_now || 0;
       const todayCount = (calls || []).filter((c) => isToday(c.started_at)).length;
       const weekCount = (calls || []).filter((c) => withinDays(c.started_at, 7)).length;
 
       $("#statGrid").innerHTML = [
-        { label: "Active Now", value: active, accent: active > 0, sub: active ? "in progress" : "idle" },
+        { label: "Active Now", value: active, dot: active > 0 ? "live" : "", accent: active > 0, sub: active ? "in progress" : "idle" },
         { label: "Today", value: todayCount, sub: "sessions" },
-        { label: "7 Days", value: weekCount, sub: "sessions" },
-        { label: "Escalated", value: s.escalated || 0, sub: "handoffs" },
-        { label: "Resolved", value: s.resolved || 0, sub: "closed" },
-        { label: "Slack", value: slack.thread_count || 0, sub: slack.configured ? "threads indexed" : "not configured" },
+        { label: "Last 7 Days", value: weekCount, sub: "sessions" },
+        { label: "Escalated", value: s.escalated || 0, dot: "red", sub: "handoffs" },
+        { label: "Resolved", value: s.resolved || 0, dot: "green", sub: "closed" },
       ].map((item) => `
         <div class="stat${item.accent ? " stat--accent" : ""}">
-          <div class="stat__label">${item.label}</div>
-          <div class="stat__value">${item.value}</div>
+          <div class="stat__label">${item.dot ? `<span class="stat__dot stat__dot--${item.dot}"></span>` : ""}${item.label}</div>
+          <div class="stat__value">${(Number(item.value) || 0).toLocaleString()}</div>
           <div class="stat__sub">${escapeHtml(item.sub)}</div>
         </div>
       `).join("");
@@ -379,55 +699,254 @@
       ).join("")}</div>`;
     }
 
+    function fmtSyncTime(v) {
+      if (!v) return "";
+      const f = fmtTime(v);
+      return f === "—" ? String(v) : f;
+    }
+
+    function integrationMain(o) {
+      const tone = o.error ? "error" : (o.configured ? "ok" : "warn");
+      const status = o.error ? "Error" : (o.configured ? "Connected" : "Not set up");
+      const last = o.error
+        ? `<span class="integration__last integration__last--error">${escapeHtml(o.error)}</span>`
+        : `<span class="integration__last">${o.lastSync ? "Last sync " + escapeHtml(fmtSyncTime(o.lastSync)) : "Never synced"}</span>`;
+      return `
+        <span class="integration__dot integration__dot--${tone}" aria-hidden="true"></span>
+        <div class="integration__info">
+          <div class="integration__name">${escapeHtml(o.name)}</div>
+          <div class="integration__desc">${escapeHtml(o.desc)}</div>
+        </div>
+        <div class="integration__metric">
+          <div class="integration__metric-value">${(Number(o.metric) || 0).toLocaleString()}</div>
+          <div class="integration__metric-label">${escapeHtml(o.metricLabel)}</div>
+        </div>
+        <div class="integration__sync">
+          <span class="integration__badge integration__badge--${tone}">${status}</span>
+          ${last}
+        </div>`;
+    }
+
     function renderSlackStatus(slack) {
       const el = $("#slackStatus");
       if (!slack) {
-        el.innerHTML = '<div class="empty">Slack sync status unavailable.</div>';
+        el.innerHTML = '<div class="empty">Status unavailable.</div>';
         return;
       }
-      const statusClass = slack.configured ? "settings-route settings-route--ok" : "settings-route settings-route--warn";
-      el.innerHTML = `
-        <div class="${statusClass}">
-          <div class="settings-route__status">${slack.configured ? "Configured" : "Not configured"}</div>
-          <div class="settings-route__line">Threads indexed: ${slack.thread_count || 0}</div>
-          <div class="settings-route__line">Last sync: ${slack.last_sync_at ? escapeHtml(slack.last_sync_at) : "Never"}</div>
-          ${slack.last_error ? `<div class="settings-route__line" style="color:#b91c1c">Error: ${escapeHtml(slack.last_error)}</div>` : ""}
-        </div>`;
+      el.innerHTML = integrationMain({
+        name: "Slack",
+        desc: "Support channel threads indexed for retrieval.",
+        metric: slack.thread_count || 0,
+        metricLabel: "threads",
+        configured: slack.configured,
+        lastSync: slack.last_sync_at,
+        error: slack.last_error,
+      });
     }
 
     function renderHubspotKbStatus(hubspot) {
       const el = $("#hubspotKbStatus");
       if (!hubspot) {
-        el.innerHTML = '<div class="empty">HubSpot sync status unavailable.</div>';
+        el.innerHTML = '<div class="empty">Status unavailable.</div>';
         return;
       }
-      const statusClass = hubspot.configured ? "settings-route settings-route--ok" : "settings-route settings-route--warn";
-      el.innerHTML = `
-        <div class="${statusClass}">
-          <div class="settings-route__status">${hubspot.configured ? "Configured" : "Not configured"}</div>
-          <div class="settings-route__line">KB ID: ${escapeHtml(hubspot.knowledge_base_id || "—")}</div>
-          <div class="settings-route__line">Articles on disk: ${hubspot.files_on_disk ?? hubspot.article_count ?? 0}</div>
-          <div class="settings-route__line">Last sync: ${hubspot.last_sync_at ? escapeHtml(hubspot.last_sync_at) : "Never"}</div>
-          ${hubspot.last_error ? `<div class="settings-route__line" style="color:#b91c1c">Error: ${escapeHtml(hubspot.last_error)}</div>` : ""}
-        </div>`;
+      el.innerHTML = integrationMain({
+        name: "HubSpot Knowledge Base",
+        desc: "Help Center articles synced into the AI index.",
+        metric: hubspot.files_on_disk ?? hubspot.article_count ?? 0,
+        metricLabel: "articles",
+        configured: hubspot.configured,
+        lastSync: hubspot.last_sync_at,
+        error: hubspot.last_error,
+      });
+    }
+
+    function renderHubspotTicketsStatus(hubspotTickets) {
+      const el = $("#hubspotTicketsStatus");
+      if (!hubspotTickets) {
+        el.innerHTML = '<div class="empty">Status unavailable.</div>';
+        return;
+      }
+      el.innerHTML = integrationMain({
+        name: "HubSpot Resolved Tickets",
+        desc: "Closed tickets with full timeline — emails, notes, calls, transcripts.",
+        metric: hubspotTickets.indexed_tickets ?? hubspotTickets.files_on_disk ?? hubspotTickets.ticket_count ?? 0,
+        metricLabel: "tickets",
+        configured: hubspotTickets.configured,
+        lastSync: hubspotTickets.last_sync_at,
+        error: hubspotTickets.last_error,
+      });
+      renderTicketsProgress(hubspotTickets);
+      // If a sync is running (e.g. page was refreshed mid-backfill), resume polling.
+      if (hubspotTickets.running && !ticketsPollTimer) startTicketsPolling();
+    }
+
+    const TICKET_PHASE_LABELS = {
+      discovering: "Discovering tickets",
+      enriching: "Enriching tickets",
+      indexing: "Rebuilding index",
+      done: "Complete",
+      error: "Failed",
+      idle: "Idle",
+    };
+
+    function renderTicketsProgress(status) {
+      const box = $("#hubspotTicketsProgress");
+      if (!box) return;
+      const running = !!(status && status.running);
+      const p = (status && status.progress) || {};
+      const phase = p.phase || "idle";
+      if (!running) { box.hidden = true; return; }
+
+      box.hidden = false;
+      const bar = $("#hubspotTicketsProgressBar");
+      const fill = $("#hubspotTicketsProgressFill");
+      const pctEl = $("#hubspotTicketsProgressPct");
+      $("#hubspotTicketsProgressPhase").textContent =
+        (TICKET_PHASE_LABELS[phase] || "Working") + (p.full_backfill ? " · full backfill" : "");
+      $("#hubspotTicketsProgressMsg").textContent = p.message || "";
+
+      const total = Number(p.closed_candidates || 0);
+      const done = Number(p.processed || 0);
+      if (phase === "enriching" && total > 0) {
+        const pct = Math.min(100, Math.round((done / total) * 100));
+        bar.classList.remove("progressbar--indeterminate");
+        fill.style.width = pct + "%";
+        pctEl.textContent = pct + "%";
+      } else {
+        // discovering / indexing → no known total, show animated indeterminate bar
+        bar.classList.add("progressbar--indeterminate");
+        pctEl.textContent = phase === "discovering"
+          ? Number(p.discovered || 0).toLocaleString() + " found"
+          : "";
+      }
+    }
+
+    function startTicketsPolling() {
+      if (ticketsPollTimer) return;
+      ticketsPollTimer = setInterval(async () => {
+        try {
+          const status = await api("/knowledge/hubspot-tickets/status");
+          renderTicketsProgress(status);
+          if (!status.running) {
+            clearInterval(ticketsPollTimer);
+            ticketsPollTimer = null;
+            $("#hubspotTicketsProgress").hidden = true;
+            const p = status.progress || {};
+            const resultEl = $("#hubspotTicketsSyncResult");
+            resultEl.hidden = false;
+            resultEl.textContent = p.phase === "error"
+              ? ("Sync failed: " + (p.error || "unknown error"))
+              : (p.message || "Sync complete.");
+            await refreshOverview();
+          }
+        } catch {
+          clearInterval(ticketsPollTimer);
+          ticketsPollTimer = null;
+        }
+      }, 3000);
+    }
+
+    function fmtTimeParts(iso) {
+      if (!iso) return { date: "—", clock: "" };
+      try {
+        const d = new Date(iso);
+        return {
+          date: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+          clock: d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+        };
+      } catch {
+        return { date: iso, clock: "" };
+      }
+    }
+
+    function channelDotClass(ch) {
+      const c = String(ch || "").toLowerCase();
+      if (c.includes("browser") || c.includes("voice")) return "browser";
+      if (c.includes("chat") || c.includes("text")) return "chat";
+      if (c.includes("phone")) return "phone";
+      return "";
+    }
+
+    function sessionMatchesFilter(c, filter) {
+      if (filter === "escalated") return !!c.escalated;
+      if (filter === "resolved") return !!c.resolved;
+      if (filter === "open") return !c.resolved;
+      return true;
+    }
+
+    const ICON_EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>';
+
+    function sessionRow(c) {
+      const t = fmtTimeParts(c.started_at);
+      const dot = channelDotClass(c.channel);
+      const cat = c.issue_category;
+      const escalated = c.escalated
+        ? '<span class="status-pill status-pill--escalated"><span class="status-pill__dot"></span>Escalated</span>'
+        : '<span class="sess-muted">—</span>';
+      const resolved = c.resolved
+        ? '<span class="status-pill status-pill--resolved"><span class="status-pill__dot"></span>Resolved</span>'
+        : '<span class="status-pill status-pill--open"><span class="status-pill__dot"></span>Open</span>';
+      let ticket;
+      if (c.ticket_created && c.hubspot_ticket_id) {
+        ticket = `<a class="ticket-link" href="https://app.hubspot.com/contacts/3355079/ticket/${escapeHtml(c.hubspot_ticket_id)}" target="_blank" rel="noopener">HubSpot${ICON_EXTERNAL}</a>`;
+      } else if (c.ticket_created) {
+        ticket = '<span class="status-pill status-pill--muted">Created</span>';
+      } else {
+        ticket = '<span class="sess-muted">—</span>';
+      }
+      return `
+        <tr data-call-id="${escapeHtml(c.call_id)}">
+          <td class="sess-time"><span class="sess-time__date">${escapeHtml(t.date)}</span><span class="sess-time__clock">${escapeHtml(t.clock)}</span></td>
+          <td><span class="sess-channel"><span class="sess-channel__dot sess-channel__dot--${dot}"></span>${escapeHtml(channelLabel(c.channel))}</span></td>
+          <td><span class="sess-cat${cat ? "" : " sess-muted"}">${escapeHtml(cat || "Uncategorized")}</span></td>
+          <td>${escalated}</td>
+          <td>${resolved}</td>
+          <td>${ticket}</td>
+          <td class="sess-go"><span class="sess-go__chevron" aria-hidden="true"></span></td>
+        </tr>`;
     }
 
     function renderSessions(calls) {
-      const rows = calls || [];
-      $("#sessionsMeta").textContent = rows.length ? `${rows.length} session${rows.length === 1 ? "" : "s"}` : "No sessions yet";
-      if (!rows.length) {
-        $("#sessionsBody").innerHTML = '<tr><td colspan="5"><div class="empty">No sessions yet.</div></td></tr>';
+      const all = calls || [];
+      const counts = {
+        all: all.length,
+        open: all.filter((c) => !c.resolved).length,
+        resolved: all.filter((c) => c.resolved).length,
+        escalated: all.filter((c) => c.escalated).length,
+      };
+      $("#cntAll").textContent = counts.all;
+      $("#cntOpen").textContent = counts.open;
+      $("#cntRes").textContent = counts.resolved;
+      $("#cntEsc").textContent = counts.escalated;
+
+      const q = ($("#sessionSearch")?.value || "").trim().toLowerCase();
+      const rows = all
+        .filter((c) => sessionMatchesFilter(c, sessionFilter))
+        .filter((c) => {
+          if (!q) return true;
+          return [channelLabel(c.channel), c.issue_category, c.call_id, fmtTime(c.started_at)]
+            .filter(Boolean).join(" ").toLowerCase().includes(q);
+        });
+
+      const meta = $("#sessionsMeta");
+      if (!all.length) {
+        meta.textContent = "No sessions yet";
+      } else if (rows.length === all.length) {
+        meta.textContent = `${all.length} session${all.length === 1 ? "" : "s"}`;
+      } else {
+        meta.textContent = `${rows.length} of ${all.length} sessions`;
+      }
+
+      if (!all.length) {
+        $("#sessionsBody").innerHTML = '<tr><td colspan="7"><div class="empty">No sessions yet — start a support session to see it here.</div></td></tr>';
         return;
       }
-      $("#sessionsBody").innerHTML = rows.map((c) => `
-        <tr>
-          <td>${escapeHtml(fmtTime(c.started_at))}</td>
-          <td>${escapeHtml(channelLabel(c.channel))}</td>
-          <td>${escapeHtml(c.issue_category || "—")}</td>
-          <td>${c.escalated ? "Yes" : "No"}</td>
-          <td>${c.resolved ? "Yes" : "No"}</td>
-        </tr>
-      `).join("");
+      if (!rows.length) {
+        $("#sessionsBody").innerHTML = '<tr><td colspan="7"><div class="empty">No sessions match this filter.</div></td></tr>';
+        return;
+      }
+      $("#sessionsBody").innerHTML = rows.map(sessionRow).join("");
     }
 
     function formatChars(n) {
@@ -439,31 +958,37 @@
 
     function renderKbStats(stats) {
       const s = stats || {};
-      const slackSub = s.slack_configured ? "threads indexed" : (s.slack_docs ? "docs in index" : "not configured");
-      const hubspotSub = s.hubspot_configured ? "articles indexed" : (s.hubspot_articles ? "on disk" : "not configured");
+
+      const emailTickets = Number(s.hubspot_email_tickets_count || 0);
+      const totalTickets = Number(s.hubspot_tickets_count || 0);
+      const emailPct = totalTickets ? Math.round((emailTickets / totalTickets) * 100) : 0;
 
       $("#kbStatGrid").innerHTML = [
-        { label: "Chunks", value: s.total_chunks || 0, sub: "searchable" },
-        { label: "Documents", value: s.total_docs || 0, sub: "indexed sources" },
-        { label: "Wiki", value: s.wiki_docs || 0, sub: `${s.wiki_chunks || 0} chunks` },
-        { label: "Slack", value: s.slack_threads || s.slack_docs || 0, sub: slackSub },
-        { label: "HubSpot", value: s.hubspot_articles || 0, sub: hubspotSub },
-        { label: "Playbook", value: s.playbook_entries || 0, sub: `${s.playbook_chunks || 0} chunks` },
+        { label: "Documents", value: (s.total_docs || 0).toLocaleString(), sub: "indexed sources" },
+        { label: "Searchable Chunks", value: (s.total_chunks || 0).toLocaleString(), sub: "vector + keyword" },
+        { label: "Characters", value: formatChars(s.total_chars || 0), sub: "indexed text" },
+        { label: "Unique Terms", value: (s.unique_terms || 0).toLocaleString(), sub: "in search index" },
+        { label: "Email-worked Tickets", value: emailTickets.toLocaleString(), sub: totalTickets ? `${emailPct}% of tickets · richest fixes` : "worked via email" },
       ].map((item) => `
         <div class="stat">
           <div class="stat__label">${item.label}</div>
-          <div class="stat__value">${item.value}</div>
+          <div class="stat__value">${escapeHtml(String(item.value))}</div>
           <div class="stat__sub">${escapeHtml(item.sub)}</div>
         </div>
       `).join("");
 
-      $("#kbIndexMeta").innerHTML = `
-        <div class="settings-route settings-route--ok">
-          <div class="settings-route__line">${formatChars(s.total_chars || 0)} characters indexed across ${s.total_chunks || 0} searchable chunks</div>
-          <div class="settings-route__line">${s.unique_terms || 0} unique terms in the search index</div>
-          <div class="settings-route__line">Wiki ${s.wiki_docs || 0} · HubSpot ${s.hubspot_articles || 0} · Slack ${s.slack_threads || 0} · Playbook ${s.playbook_entries || 0}</div>
-          <div class="settings-route__line">Product metadata: ${s.sqlite_ok ? "SQLite ready" : "memory only"}</div>
-        </div>`;
+      kbEmailTicketTotal = emailTickets;
+      $("#kbSourceSummary").innerHTML = [
+        { label: "Wiki", dot: "wiki", value: s.wiki_docs || 0 },
+        { label: "Slack", dot: "slack", value: s.slack_threads || s.slack_docs || 0 },
+        { label: "HubSpot KB", dot: "hubspot", value: s.hubspot_articles || 0 },
+        { label: "HubSpot Tickets", dot: "hubspot", value: s.hubspot_tickets_count || 0 },
+        { label: "Playbook", dot: "playbook", value: s.playbook_entries || 0 },
+      ].map((x) => `
+        <span class="kb-src-chip">
+          <span class="kb-source-dot kb-source-dot--${x.dot}"></span>${escapeHtml(x.label)} <strong>${(Number(x.value) || 0).toLocaleString()}</strong>
+        </span>
+      `).join("");
     }
 
     function kbBadgeClass(label) {
@@ -472,6 +997,8 @@
         "HubSpot KB": "hubspot",
         "Slack": "slack",
         "Playbook": "playbook",
+        "HubSpot Resolved Tickets": "hubspot",
+        "HubSpot Tickets": "hubspot",
         "Upload": "upload",
       })[label] || "upload";
     }
@@ -494,7 +1021,7 @@
     }
 
     function renderDocRow(doc) {
-      const badge = kbBadgeClass(doc.source_label);
+      const badge = kbBadgeClass(kbSourceLabel(doc.source_label));
       const metaParts = [`${doc.chunk_count || 0} chunks`];
       if (doc.char_count) metaParts.push(`${formatChars(doc.char_count)} chars`);
       const footLeft = doc.category || doc.source_label || doc.kind || "Source";
@@ -503,7 +1030,7 @@
         <button type="button" class="kb-doc-row" data-doc-id="${escapeHtml(doc.doc_id)}">
           <div class="kb-doc-row__main">
             <div class="kb-doc-row__top">
-              <span class="kb-badge kb-badge--${badge}">${escapeHtml(doc.source_label || doc.kind || "Source")}</span>
+              <span class="kb-badge kb-badge--${badge}">${escapeHtml(kbSourceLabel(doc.source_label || doc.kind || "Source"))}</span>
               ${dateLabel ? `<span class="kb-doc-row__date">${escapeHtml(dateLabel)}</span>` : ""}
             </div>
             <div class="kb-doc-row__title">${escapeHtml(doc.title || doc.doc_id)}</div>
@@ -516,10 +1043,58 @@
         </button>`;
     }
 
+    function kbSourceCount(source, items) {
+      const totals = cachedGroupTotals || {};
+      const n = totals[source] ?? totals[kbSourceLabel(source)];
+      if (n != null && n > 0) return n;
+      if (source === "HubSpot Resolved Tickets" && cachedTicketTotal > 0) return cachedTicketTotal;
+      return items.length;
+    }
+
+    function formatSourceCount(n) {
+      const v = Number(n) || 0;
+      if (v >= 1000000) return (v / 1000000).toFixed(1) + "M";
+      if (v >= 1000) return (v / 1000).toFixed(1) + "k";
+      return String(v);
+    }
+
+    function applyKbEnabledSources(enabled) {
+      if (!enabled || typeof enabled !== "object") return;
+      KB_SOURCE_ORDER.forEach((key) => {
+        if (key in enabled) kbEnabledSources[key] = !!enabled[key];
+      });
+    }
+
+    function kbSourceAiEnabled(source) {
+      return kbEnabledSources[source] !== false;
+    }
+
+    async function setKbSourceEnabled(source, on) {
+      kbEnabledSources[source] = !!on;
+      renderKnowledgeDocs({ docs: cachedKbDocs, group_totals: cachedGroupTotals, ticket_total: cachedTicketTotal });
+      try {
+        const data = await api("/knowledge/sources", {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: { [source]: !!on } }),
+        });
+        if (data.enabled) applyKbEnabledSources(data.enabled);
+        renderKnowledgeDocs({ docs: cachedKbDocs, group_totals: cachedGroupTotals, ticket_total: cachedTicketTotal });
+        showToast(on ? `${kbSourceLabel(source)} enabled for AI` : `${kbSourceLabel(source)} excluded from AI`);
+      } catch (err) {
+        kbEnabledSources[source] = !on;
+        renderKnowledgeDocs({ docs: cachedKbDocs, group_totals: cachedGroupTotals, ticket_total: cachedTicketTotal });
+        showToast(err.message || "Could not update source");
+      }
+    }
+
     function renderKnowledgeDocs(payload) {
       const docs = payload.docs || payload || [];
       cachedKbDocs = docs;
-      const groups = payload.groups || {};
+      if (payload.group_totals) cachedGroupTotals = payload.group_totals;
+      else if (payload.groups && !Object.keys(cachedGroupTotals).length) cachedGroupTotals = payload.groups;
+      if (payload.ticket_total != null) cachedTicketTotal = Number(payload.ticket_total) || 0;
+      if (payload.enabled_sources) applyKbEnabledSources(payload.enabled_sources);
+      const groups = payload.group_totals || cachedGroupTotals || payload.groups || {};
       const filter = ($("#kbSourceFilter")?.value || "").trim().toLowerCase();
       const filtered = filter
         ? docs.filter((doc) =>
@@ -531,10 +1106,16 @@
           )
         : docs;
 
-      const summaryParts = KB_SOURCE_ORDER.filter((key) => groups[key]).map((key) => `${groups[key]} ${key}`);
+      const totals = cachedGroupTotals || groups;
+      const summaryParts = KB_SOURCE_ORDER.filter((key) => totals[key]).map(
+        (key) => `${formatSourceCount(totals[key])} ${key}`
+      );
+      const catalogTotal = Object.values(totals).reduce((a, b) => a + (Number(b) || 0), 0) || docs.length;
+      const aiOn = KB_SOURCE_ORDER.filter((key) => kbSourceAiEnabled(key) && totals[key]).length;
+      const aiMeta = `${aiOn} of ${KB_SOURCE_ORDER.filter((key) => totals[key]).length || KB_SOURCE_ORDER.length} source types on for AI`;
       $("#kbSourcesMeta").textContent = filtered.length === docs.length
-        ? `${docs.length} source${docs.length === 1 ? "" : "s"} · ${summaryParts.join(" · ") || "No sources"}`
-        : `${filtered.length} of ${docs.length} sources`;
+        ? `${formatSourceCount(catalogTotal)} source${catalogTotal === 1 ? "" : "s"} · ${aiMeta} · ${summaryParts.join(" · ") || "No sources"}`
+        : `${filtered.length} of ${formatSourceCount(catalogTotal)} sources · ${aiMeta}`;
 
       if (!filtered.length) {
         $("#kbDocList").innerHTML = '<div class="kb-empty">No matching knowledge sources.</div>';
@@ -543,33 +1124,104 @@
 
       const bySource = {};
       filtered.forEach((doc) => {
-        const key = doc.source_label || doc.kind || "Other";
+        const key = kbSourceKey(doc.source_label || doc.kind || "Other");
         (bySource[key] ||= []).push(doc);
       });
 
-      $("#kbDocList").innerHTML = KB_SOURCE_ORDER.filter((key) => bySource[key]?.length).map((source) => {
+      const groupHtml = KB_SOURCE_ORDER.filter((key) => bySource[key]?.length).map((source) => {
         const items = [...bySource[source]].sort((a, b) => {
           if (source === "Slack" && a.date && b.date) return b.date.localeCompare(a.date);
           return (a.title || a.doc_id || "").localeCompare(b.title || b.doc_id || "");
         });
-        const expanded = kbExpandedGroups.has(source) || items.length <= KB_COLLAPSE_LIMIT;
-        const visible = expanded ? items : items.slice(0, KB_COLLAPSE_LIMIT);
-        const hiddenCount = items.length - visible.length;
+        const isOpen = kbOpenGroups.has(source);
+        const showAll = kbShowAllGroups.has(source);
+        const isTickets = source === "HubSpot Resolved Tickets";
+        const totalInGroup = kbSourceCount(source, items);
+        const visible = !isOpen
+          ? []
+          : isTickets || showAll || items.length <= KB_COLLAPSE_LIMIT
+            ? items
+            : items.slice(0, KB_COLLAPSE_LIMIT);
+        const shownCount = visible.length;
+        const hasMoreLoaded = isOpen && shownCount < items.length;
+        const hasMoreInIndex = isOpen && totalInGroup > items.length;
+        const aiOn = kbSourceAiEnabled(source);
         return `
-          <section class="kb-source-group">
+          <section class="kb-source-group${isOpen ? " is-open" : ""}${aiOn ? "" : " is-ai-off"}" data-kb-source="${escapeHtml(source)}">
             <div class="kb-source-group__head">
-              <div>
-                <div class="kb-source-group__title">${escapeHtml(source)}</div>
-                <div class="kb-source-group__hint">${escapeHtml(KB_SOURCE_HINTS[source] || "")}</div>
+              <button type="button" class="kb-source-group__expand" data-kb-toggle="${escapeHtml(source)}" aria-expanded="${isOpen ? "true" : "false"}">
+                <span class="kb-source-group__chevron" aria-hidden="true"></span>
+                <div class="kb-source-group__intro">
+                  <div class="kb-source-group__title"><span class="kb-source-dot kb-source-dot--${kbBadgeClass(kbSourceLabel(source))}"></span>${escapeHtml(kbSourceLabel(source))}</div>
+                  <div class="kb-source-group__hint">${escapeHtml(KB_SOURCE_HINTS[source] || KB_SOURCE_HINTS[kbSourceLabel(source)] || "")}</div>
+                </div>
+                <div class="kb-source-group__count">${formatSourceCount(totalInGroup)} source${totalInGroup === 1 ? "" : "s"}</div>
+              </button>
+              <label class="kb-source-toggle" title="${aiOn ? "AI uses this source — click to exclude" : "Excluded from AI — click to include"}">
+                <input type="checkbox" class="kb-source-toggle__input" data-kb-enable="${escapeHtml(source)}" ${aiOn ? "checked" : ""} aria-label="${escapeHtml(kbSourceLabel(source))} ${aiOn ? "enabled" : "disabled"} for AI" />
+                <span class="kb-source-toggle__track" aria-hidden="true"></span>
+                <span class="kb-source-toggle__label">AI</span>
+              </label>
+            </div>
+            <div class="kb-source-group__body"${isOpen ? "" : " hidden"}>
+              <div class="kb-source-group__list">
+                ${visible.map((doc) => renderDocRow(doc)).join("")}
               </div>
-              <div class="kb-source-group__count">${items.length} source${items.length === 1 ? "" : "s"}</div>
+              ${hasMoreLoaded ? `<button type="button" class="kb-source-group__more" data-kb-show-all="${escapeHtml(source)}">Show all ${items.length} loaded</button>` : ""}
+              ${hasMoreInIndex && isTickets ? `<button type="button" class="kb-source-group__more" data-kb-load-tickets="1">Load more (${formatSourceCount(items.length)} of ${formatSourceCount(totalInGroup)} loaded)</button>` : ""}
+              ${hasMoreInIndex && !isTickets && !hasMoreLoaded ? `<button type="button" class="kb-source-group__more" data-kb-show-all="${escapeHtml(source)}">Show all ${formatSourceCount(totalInGroup)} ${escapeHtml(kbSourceLabel(source))} sources</button>` : ""}
             </div>
-            <div class="kb-source-group__list">
-              ${visible.map((doc) => renderDocRow(doc)).join("")}
-            </div>
-            ${hiddenCount > 0 ? `<button type="button" class="kb-source-group__more" data-kb-group="${escapeHtml(source)}">Show all ${items.length} ${escapeHtml(source)} sources</button>` : ""}
           </section>`;
-      }).join("");
+      });
+
+      // Surface "Email-worked Tickets" first — the richest step-by-step fixes.
+      groupHtml.unshift(renderEmailTicketGroupSection());
+
+      $("#kbDocList").innerHTML = groupHtml.join("");
+    }
+
+    function renderEmailTicketGroupSection() {
+      const isOpen = kbEmailGroupOpen;
+      const total = kbEmailTicketTotal || 0;
+      const loaded = kbEmailTicketDocs.length;
+      const rows = kbEmailTicketDocs.map((doc) => renderDocRow(doc)).join("");
+      const hasMore = loaded < total;
+      const searching = !!kbEmailTicketQuery;
+      const emptyMsg = kbEmailTicketLoading
+        ? "Searching…"
+        : searching
+          ? `No email-worked tickets contain “${escapeHtml(kbEmailTicketQuery)}”.`
+          : "No email-worked tickets found.";
+      const countLabel = searching
+        ? `${formatSourceCount(total)} match${total === 1 ? "" : "es"}`
+        : `${formatSourceCount(total)} loaded of all email-worked`;
+      const body = !isOpen
+        ? ""
+        : `<div class="kb-source-group__body">
+             <div class="kb-email-search">
+               <svg class="kb-email-search__icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M11.7 10.3a5 5 0 1 0-1.4 1.4l3 3 1.4-1.4zM3.5 6.5a3 3 0 1 1 6 0 3 3 0 0 1-6 0z"/></svg>
+               <input type="search" id="kbEmailSearch" class="kb-email-search__input" placeholder="Search email-worked tickets by content (e.g. “lead delivery”, “Facebook page”)…" value="${escapeHtml(kbEmailTicketQuery)}" autocomplete="off" />
+               ${searching ? `<span class="kb-email-search__count">${escapeHtml(countLabel)}</span>` : ""}
+             </div>
+             <div class="kb-source-group__list">
+               ${rows || `<div class="kb-empty">${emptyMsg}</div>`}
+             </div>
+             ${hasMore ? `<button type="button" class="kb-source-group__more" data-kb-email-more="1" ${kbEmailTicketLoading ? "disabled" : ""}>${kbEmailTicketLoading ? "Loading…" : `Load more (${loaded.toLocaleString()} of ${total.toLocaleString()} loaded)`}</button>` : ""}
+           </div>`;
+      return `
+        <section class="kb-source-group${isOpen ? " is-open" : ""}" data-kb-source="Email-worked Tickets">
+          <div class="kb-source-group__head">
+            <button type="button" class="kb-source-group__expand" data-kb-email-toggle="1" aria-expanded="${isOpen ? "true" : "false"}">
+              <span class="kb-source-group__chevron" aria-hidden="true"></span>
+              <div class="kb-source-group__intro">
+                <div class="kb-source-group__title"><span class="kb-source-dot kb-source-dot--hubspot"></span>Email-worked Tickets</div>
+                <div class="kb-source-group__hint">Tickets worked via email — the richest step-by-step fixes. A subset of resolved tickets.</div>
+              </div>
+              <div class="kb-source-group__count">${formatSourceCount(total)} source${total === 1 ? "" : "s"}</div>
+            </button>
+          </div>
+          ${body}
+        </section>`;
     }
 
     async function openKbDocPreview(docId) {
@@ -610,21 +1262,139 @@
       $("#kbDocPreviewBody").textContent = "";
     }
 
+    function rerenderKbDocList() {
+      const active = document.activeElement;
+      const keepEmailFocus = active && active.id === "kbEmailSearch";
+      // Preserve exactly what the user has typed (incl. trailing spaces) and the
+      // caret. Re-rendering replaces the input element, and rebuilding it from the
+      // trimmed query would drop in-progress spaces and jump the caret (glitch).
+      const liveValue = keepEmailFocus ? active.value : null;
+      const caretStart = keepEmailFocus ? active.selectionStart : null;
+      const caretEnd = keepEmailFocus ? active.selectionEnd : null;
+      renderKnowledgeDocs({ docs: cachedKbDocs, group_totals: cachedGroupTotals, ticket_total: cachedTicketTotal });
+      if (keepEmailFocus) {
+        const el = $("#kbEmailSearch");
+        if (el) {
+          if (liveValue !== null && el.value !== liveValue) el.value = liveValue;
+          el.focus();
+          try { el.setSelectionRange(caretStart, caretEnd); } catch (_) {}
+        }
+      }
+    }
+
+    async function loadEmailTickets(reset) {
+      // If a load is already running, remember to re-run with the latest query
+      // instead of silently dropping it (otherwise results lag behind typing).
+      if (kbEmailTicketLoading) {
+        if (reset) kbEmailReloadPending = true;
+        return;
+      }
+      kbEmailTicketLoading = true;
+      if (reset) { kbEmailTicketDocs = []; kbEmailTicketOffset = 0; }
+      rerenderKbDocList();
+      const fetchedQuery = kbEmailTicketQuery;
+      try {
+        const qParam = fetchedQuery ? `&q=${encodeURIComponent(fetchedQuery)}` : "";
+        const data = await api(`/knowledge/email-tickets?offset=${kbEmailTicketOffset}&limit=${KB_EMAIL_PAGE}${qParam}`);
+        if (data.ok === false) throw new Error(data.error || "Could not load email-worked tickets.");
+        const docs = data.docs || [];
+        kbEmailTicketDocs = kbEmailTicketDocs.concat(docs);
+        kbEmailTicketOffset += docs.length;
+        if (typeof data.total === "number") kbEmailTicketTotal = data.total;
+      } catch (err) {
+        showToast(err.message || "Could not load email-worked tickets.");
+      } finally {
+        kbEmailTicketLoading = false;
+        rerenderKbDocList();
+        // The query changed while we were fetching — reload with the newest one.
+        if (kbEmailReloadPending || fetchedQuery !== kbEmailTicketQuery) {
+          kbEmailReloadPending = false;
+          loadEmailTickets(true);
+        }
+      }
+    }
+
+    function openSessionDetail(callId) {
+      const call = cachedCalls.find((c) => c.call_id === callId);
+      if (!call) return;
+
+      const modal = $("#sessionDetailModal");
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+
+      $("#sessionDetailTitle").textContent = "Session Detail: " + callId.slice(0, 18) + (callId.length > 18 ? "…" : "");
+      $("#sessionDetailMeta").textContent = `Started: ${fmtTime(call.started_at)} · Channel: ${channelLabel(call.channel)}`;
+
+      $("#sessionDetailChannel").textContent = channelLabel(call.channel);
+      $("#sessionDetailCategory").textContent = call.issue_category || "—";
+      $("#sessionDetailEscalated").textContent = call.escalated ? "Yes" : "No";
+      $("#sessionDetailResolved").textContent = call.resolved ? "Yes" : "No";
+      const ticketEl = document.getElementById("sessionDetailTicket");
+      if (ticketEl) {
+        if (call.ticket_created && call.hubspot_ticket_id) {
+          ticketEl.innerHTML = `<a href="https://app.hubspot.com/contacts/3355079/ticket/${escapeHtml(call.hubspot_ticket_id)}" target="_blank" rel="noopener">Open in HubSpot</a>`;
+        } else {
+          ticketEl.textContent = call.ticket_created ? "Yes (local)" : "No";
+        }
+      }
+
+      const summaryText = call.interaction_summary || "No AI summary generated for this session yet.";
+      $("#sessionSummaryText").textContent = summaryText;
+
+      const transcript = call.transcript || [];
+      const transcriptEl = $("#sessionDetailTranscript");
+      if (!transcript.length) {
+        transcriptEl.innerHTML = '<div class="empty" style="color: var(--text-muted);">No transcript available for this session.</div>';
+      } else {
+        transcriptEl.innerHTML = transcript.map((t) => {
+          const roleLabel = t.role === "user" ? "User" : (t.role === "agent" || t.role === "assistant" ? "Hannah" : t.role);
+          const bg = t.role === "user" ? "var(--bg)" : "var(--border-soft)";
+          return `
+            <div style="background: ${bg}; padding: 0.75rem 1rem; border-radius: 6px; display: flex; flex-direction: column; gap: 0.25rem;">
+              <span style="font-weight: 600; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted);">${escapeHtml(roleLabel)}</span>
+              <span style="font-size: 0.9rem; line-height: 1.4; color: var(--text);">${escapeHtml(t.text || t.message || "")}</span>
+            </div>
+          `;
+        }).join("");
+      }
+    }
+
+    function closeSessionDetail() {
+      const modal = $("#sessionDetailModal");
+      if (!modal || modal.hidden) return;
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("modal-open");
+    }
+
     function renderPlaybook(entries) {
       const list = entries || [];
       $("#kbPlaybookNote").textContent = list.length ? `${list.length} approved entries` : "Empty playbook";
+      const addToggle = $("#kbPlaybookAddToggle");
+      if (addToggle) addToggle.hidden = !kbPlaybookEditable;
+      if (!kbPlaybookEditable) {
+        const form = $("#kbPlaybookAddForm");
+        if (form) form.hidden = true;
+      }
       if (!list.length) {
         $("#kbPlaybookList").innerHTML = '<div class="kb-empty">No playbook entries yet.</div>';
         return;
       }
-      $("#kbPlaybookList").innerHTML = list.map((e) => `
+      $("#kbPlaybookList").innerHTML = list.map((e) => {
+        const title = (e.heading || "Entry").replace(/^#+\s*/, "");
+        const remove = kbPlaybookEditable
+          ? `<button type="button" class="btn btn--sm kb-fb-btn" data-pb-remove="${escapeHtml(e.id)}" title="Remove this answer from the playbook">Remove</button>`
+          : "";
+        return `
         <div class="kb-playbook-entry">
           <div class="kb-playbook-entry__head">
-            <span class="kb-playbook-entry__title">${escapeHtml(e.heading || "Entry")}</span>
+            <span class="kb-playbook-entry__title">${escapeHtml(title)}</span>
+            ${remove}
           </div>
           <div class="kb-playbook-entry__body">${escapeHtml(e.body || "")}</div>
-        </div>
-      `).join("");
+        </div>`;
+      }).join("");
     }
 
     async function refreshOverview() {
@@ -641,6 +1411,7 @@
       renderChannels(aggregateChannels(cachedCalls));
       renderSlackStatus(data.slack_sync);
       renderHubspotKbStatus(data.hubspot_kb_sync);
+      renderHubspotTicketsStatus(data.hubspot_tickets_sync);
     }
 
     async function refreshSessions() {
@@ -649,15 +1420,576 @@
       renderSessions(cachedCalls);
     }
 
+    async function loadMoreKbTickets() {
+      kbTicketOffset += KB_TICKET_PAGE;
+      const data = await api(
+        `/knowledge/docs?ticket_offset=${kbTicketOffset}&ticket_limit=${KB_TICKET_PAGE}&tickets_only=true`
+      );
+      if (data.group_totals) cachedGroupTotals = data.group_totals;
+      if (data.ticket_total != null) cachedTicketTotal = Number(data.ticket_total) || cachedTicketTotal;
+      const existingIds = new Set(cachedKbDocs.map((d) => d.doc_id));
+      const newDocs = (data.docs || []).filter((d) => !existingIds.has(d.doc_id));
+      cachedKbDocs = [...cachedKbDocs, ...newDocs];
+      renderKnowledgeDocs({ docs: cachedKbDocs, group_totals: cachedGroupTotals, ticket_total: cachedTicketTotal });
+    }
+
     async function refreshKnowledge() {
+      kbTicketOffset = 0;
       const [stats, docs, pb] = await Promise.all([
         api("/knowledge/stats"),
-        api("/knowledge/docs"),
+        api(`/knowledge/docs?ticket_offset=0&ticket_limit=${KB_TICKET_PAGE}`),
         api("/knowledge/playbook"),
+        loadTicketPins(),
       ]);
       renderKbStats(stats);
       renderKnowledgeDocs(docs);
+      kbPlaybookEditable = pb.editable !== false;
       renderPlaybook(pb.entries || []);
+      renderTicketPins();
+    }
+
+    const CSQ_CATEGORY_LABELS = {
+      login: "Login", billing: "Billing", integrations: "Integrations", dashboard: "Dashboard",
+      "facebook-aia": "Facebook AIA", marketposter: "MarketPoster", connect: "Connect",
+      leads: "Leads", account: "Account", cancellation: "Cancellation", training: "Training",
+      other: "Other",
+    };
+
+    function csqCategoryLabel(cat) {
+      return CSQ_CATEGORY_LABELS[(cat || "other").toLowerCase()] || (cat || "Other");
+    }
+
+    function csqCategoryKey(cat) {
+      const raw = (cat || "other").toLowerCase();
+      return CSQ_CATEGORY_LABELS[raw] ? raw : "other";
+    }
+
+    let qaBoard = null;
+    let qaFilter = "all";
+
+    async function refreshQa() {
+      const meta = $("#qaMeta");
+      const board = $("#qaBoard");
+      try {
+        const data = await api("/qa");
+        qaBoard = data;
+        renderQa();
+      } catch (ex) {
+        if (meta) meta.textContent = ex.message || "Could not load Q&A.";
+        if (board) board.innerHTML = `<div class="empty">${escapeHtml(ex.message || "Could not load Q&A.")}</div>`;
+      }
+    }
+
+    function renderQa() {
+      const meta = $("#qaMeta");
+      const board = $("#qaBoard");
+      const progWrap = $("#qaProgressWrap");
+      if (!qaBoard) return;
+
+      if (!qaBoard.built) {
+        if (meta) meta.textContent = qaBoard.running
+          ? "CS Questions is still building — answers will appear once it finishes."
+          : "Build the CS Questions database first to populate the top questions here.";
+        if (progWrap) progWrap.hidden = true;
+        board.innerHTML = `<div class="empty">No questions yet. Open <strong>CS Questions</strong> and click Build / Refresh.</div>`;
+        const genBtn = $("#btnQaGenerate");
+        if (genBtn) genBtn.disabled = true;
+        const approveAllBtn = $("#btnQaApproveAll");
+        if (approveAllBtn) approveAllBtn.hidden = true;
+        return;
+      }
+
+      const answered = Number(qaBoard.answered || 0);
+      const total = Number(qaBoard.total || 0);
+      const draftCount = Number(qaBoard.drafts || 0);
+      const pct = total ? Math.round((answered / total) * 100) : 0;
+      const draftNote = draftCount ? ` &middot; <strong>${draftCount}</strong> AI draft${draftCount === 1 ? "" : "s"} to review` : "";
+      if (meta) meta.innerHTML = `<strong>${answered}</strong> of <strong>${total}</strong> top questions answered`
+        + draftNote
+        + ` &middot; ${qaBoard.categories.length} categories &middot; top ${qaBoard.top_per_category || 5} per category`;
+      if (progWrap) {
+        progWrap.hidden = false;
+        $("#qaProgressFill").style.width = pct + "%";
+        $("#qaProgressLabel").textContent = pct + "%";
+      }
+      renderQaActions();
+
+      const cats = (qaBoard.categories || []).map((cat) => {
+        const questions = cat.questions.filter((q) => {
+          if (qaFilter === "answered") return q.answered;
+          if (qaFilter === "drafts") return q.has_draft;
+          if (qaFilter === "unanswered") return !q.answered && !q.has_draft;
+          return true;
+        });
+        if (!questions.length) return "";
+        const cards = questions.map((q) => qaCardHtml(q)).join("");
+        return `
+          <div class="qa-cat">
+            <div class="qa-cat__head">
+              <span class="csq-category csq-category--${escapeHtml(csqCategoryKey(cat.category))}">${escapeHtml(csqCategoryLabel(cat.category))}</span>
+              <span class="qa-cat__meta">${cat.answered}/${cat.total} answered &middot; ${Number(cat.volume || 0).toLocaleString()} tickets</span>
+            </div>
+            <div class="qa-cards">${cards}</div>
+          </div>`;
+      }).filter(Boolean).join("");
+
+      board.innerHTML = cats || `<div class="empty">No questions match this filter.</div>`;
+    }
+
+    function qaCardHtml(q) {
+      const hasDraft = !!q.has_draft;
+      let badge;
+      if (q.answered) badge = '<span class="qa-badge qa-badge--done">Answered</span>';
+      else if (hasDraft) badge = '<span class="qa-badge qa-badge--draft">AI draft &middot; review</span>';
+      else badge = '<span class="qa-badge qa-badge--todo">Needs answer</span>';
+
+      let updated;
+      if (hasDraft) updated = q.updated_at ? `AI drafted ${fmtTime(q.updated_at)}` : "AI draft";
+      else updated = q.updated_at ? `Updated ${fmtTime(q.updated_at)}` : "Not answered yet";
+
+      let sourcesHtml = "";
+      if (hasDraft && Array.isArray(q.sources) && q.sources.length) {
+        const chips = q.sources
+          .map((s) => `<span class="qa-source-chip" title="${escapeHtml(s.doc_id || "")}">${escapeHtml(s.title || s.doc_id || "source")}</span>`)
+          .join("");
+        sourcesHtml = `<div class="qa-card__sources"><span class="qa-card__sources-label">Based on</span>${chips}</div>`;
+      }
+
+      let footBtns;
+      if (hasDraft) {
+        footBtns = `
+            <button class="btn btn--sm btn--ghost qa-discard" type="button">Discard</button>
+            <button class="btn btn--sm btn--ghost qa-regen" type="button">Regenerate</button>
+            <button class="btn btn--sm btn--primary btn--red qa-approve" type="button">Approve &amp; save</button>`;
+      } else {
+        footBtns = `
+            <button class="btn btn--sm btn--ghost qa-regen" type="button">Draft with AI</button>
+            <button class="btn btn--sm btn--primary btn--red qa-save" type="button">Save answer</button>`;
+      }
+
+      const cls = q.answered ? " is-answered" : (hasDraft ? " has-draft" : "");
+      return `
+        <div class="qa-card${cls}" data-qa-key="${escapeHtml(q.key)}">
+          <div class="qa-card__top">
+            <div class="qa-card__q">${escapeHtml(q.question)}</div>
+            ${badge}
+          </div>
+          <div class="qa-card__sub">${Number(q.count || 0).toLocaleString()} tickets &middot; ${q.share || 0}% of volume</div>
+          <textarea class="qa-card__answer" rows="3" placeholder="Write the answer Customer Support gives for this…">${escapeHtml(q.answer || "")}</textarea>
+          ${sourcesHtml}
+          <div class="qa-card__foot">
+            <span class="qa-card__updated">${escapeHtml(updated)}</span>
+            <div class="qa-card__actions">${footBtns}</div>
+          </div>
+        </div>`;
+    }
+
+    function findQaQuestion(key) {
+      return (qaBoard.categories || []).flatMap((c) => c.questions).find((x) => x.key === key);
+    }
+
+    function recomputeQaTotals() {
+      (qaBoard.categories || []).forEach((c) => {
+        c.answered = c.questions.filter((x) => x.answered).length;
+        c.drafts = c.questions.filter((x) => x.has_draft).length;
+      });
+      qaBoard.answered = (qaBoard.categories || []).reduce((sum, c) => sum + c.answered, 0);
+      qaBoard.drafts = (qaBoard.categories || []).reduce((sum, c) => sum + c.drafts, 0);
+    }
+
+    async function saveQaAnswer(card, btn) {
+      const key = card.dataset.qaKey;
+      const q = findQaQuestion(key);
+      if (!q) return;
+      const textarea = card.querySelector(".qa-card__answer");
+      const answer = textarea.value;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = "Saving…";
+      try {
+        const res = await api("/qa/answer", {
+          method: "POST",
+          body: JSON.stringify({ key, question: q.question, category: q.category, answer }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Save failed.");
+        q.answer = answer;
+        q.answered = !!answer.trim();
+        q.has_draft = false;
+        q.status = answer.trim() ? "approved" : "empty";
+        q.updated_at = (res.answer && res.answer.updated_at) || new Date().toISOString();
+        recomputeQaTotals();
+        renderQa();
+      } catch (ex) {
+        btn.textContent = prev;
+        btn.disabled = false;
+        alert(ex.message || "Could not save answer.");
+      }
+    }
+
+    async function regenerateQaCard(card, btn) {
+      const key = card.dataset.qaKey;
+      const q = findQaQuestion(key);
+      if (!q) return;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = "Drafting…";
+      try {
+        const res = await api("/qa/regenerate", {
+          method: "POST",
+          body: JSON.stringify({ key, question: q.question, category: q.category }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Could not draft an answer.");
+        q.answer = res.answer || "";
+        q.answered = false;
+        q.has_draft = !!(res.answer || "").trim();
+        q.status = q.has_draft ? "draft" : "empty";
+        q.ai_generated = true;
+        q.sources = res.sources || [];
+        q.updated_at = (res.row && res.row.updated_at) || new Date().toISOString();
+        recomputeQaTotals();
+        renderQa();
+      } catch (ex) {
+        btn.textContent = prev;
+        btn.disabled = false;
+        alert(ex.message || "Could not draft an answer.");
+      }
+    }
+
+    async function discardQaDraft(card, btn) {
+      const key = card.dataset.qaKey;
+      const q = findQaQuestion(key);
+      if (!q) return;
+      btn.disabled = true;
+      try {
+        const res = await api("/qa/discard", { method: "POST", body: JSON.stringify({ key }) });
+        if (res.ok === false) throw new Error(res.error || "Could not discard draft.");
+        q.answer = "";
+        q.answered = false;
+        q.has_draft = false;
+        q.status = "empty";
+        q.sources = [];
+        q.updated_at = "";
+        recomputeQaTotals();
+        renderQa();
+      } catch (ex) {
+        btn.disabled = false;
+        alert(ex.message || "Could not discard draft.");
+      }
+    }
+
+    function renderQaActions() {
+      const gen = (qaBoard && qaBoard.generation) || {};
+      const statusEl = $("#qaGenStatus");
+      const genBtn = $("#btnQaGenerate");
+      const cancelBtn = $("#btnQaGenCancel");
+      const approveAllBtn = $("#btnQaApproveAll");
+      const draftCount = Number(qaBoard.drafts || 0);
+      const running = !!gen.running;
+
+      if (genBtn) {
+        genBtn.classList.toggle("is-loading", running);
+        genBtn.disabled = running || !qaBoard.built;
+        const label = genBtn.querySelector(".btn__label");
+        if (label) label.textContent = running ? "Drafting…" : "Draft answers with AI";
+      }
+      if (cancelBtn) cancelBtn.hidden = !running;
+      if (running) startQaGenPolling();
+      if (approveAllBtn) {
+        approveAllBtn.hidden = draftCount === 0;
+        approveAllBtn.disabled = false;
+        approveAllBtn.textContent = draftCount ? `Approve all ${draftCount} drafts` : "Approve all drafts";
+      }
+      if (statusEl) {
+        if (running) {
+          const done = Number(gen.done || 0);
+          const total = Number(gen.total || 0);
+          statusEl.textContent = `Hannah is drafting answers… ${done}/${total}`;
+          statusEl.className = "qa-gen-status is-running";
+        } else if (gen.last_error) {
+          statusEl.textContent = `Last run had an issue: ${gen.last_error}`;
+          statusEl.className = "qa-gen-status is-error";
+        } else if (draftCount) {
+          statusEl.textContent = `${draftCount} AI draft${draftCount === 1 ? "" : "s"} ready for your review — edit if needed, then approve.`;
+          statusEl.className = "qa-gen-status";
+        } else {
+          statusEl.textContent = "Let the AI draft answers from your knowledge base & tickets, then approve them.";
+          statusEl.className = "qa-gen-status";
+        }
+      }
+    }
+
+    let qaGenPoll = null;
+    function startQaGenPolling() {
+      if (qaGenPoll) return;
+      qaGenPoll = setInterval(async () => {
+        try {
+          await refreshQa();
+        } catch (_) { /* ignore */ }
+        if (!qaBoard || !qaBoard.generation || !qaBoard.generation.running) {
+          clearInterval(qaGenPoll);
+          qaGenPoll = null;
+        }
+      }, 2500);
+    }
+
+    document.querySelectorAll(".qa-filter__btn").forEach((b) => {
+      b.addEventListener("click", () => {
+        document.querySelectorAll(".qa-filter__btn").forEach((x) => x.classList.remove("is-active"));
+        b.classList.add("is-active");
+        qaFilter = b.dataset.qaFilter;
+        renderQa();
+      });
+    });
+
+    $("#qaBoard")?.addEventListener("click", (event) => {
+      const target = event.target;
+      const card = target.closest(".qa-card");
+      if (!card) return;
+      if (target.closest(".qa-save")) saveQaAnswer(card, target.closest(".qa-save"));
+      else if (target.closest(".qa-approve")) saveQaAnswer(card, target.closest(".qa-approve"));
+      else if (target.closest(".qa-regen")) regenerateQaCard(card, target.closest(".qa-regen"));
+      else if (target.closest(".qa-discard")) discardQaDraft(card, target.closest(".qa-discard"));
+    });
+
+    $("#btnQaGenerate")?.addEventListener("click", async () => {
+      const btn = $("#btnQaGenerate");
+      btn.disabled = true;
+      try {
+        const res = await api("/qa/generate", { method: "POST", body: JSON.stringify({ scope: "unanswered" }) });
+        if (res.ok === false) throw new Error(res.error || "Could not start generation.");
+        if (res.started === false && res.running !== true) {
+          const statusEl = $("#qaGenStatus");
+          if (statusEl) statusEl.textContent = res.message || "Nothing to draft right now.";
+          btn.disabled = false;
+          return;
+        }
+        await refreshQa();
+        startQaGenPolling();
+      } catch (ex) {
+        btn.disabled = false;
+        alert(ex.message || "Could not start AI drafting.");
+      }
+    });
+
+    $("#btnQaGenCancel")?.addEventListener("click", async () => {
+      try {
+        await api("/qa/generate/cancel", { method: "POST" });
+        await refreshQa();
+      } catch (_) { /* ignore */ }
+    });
+
+    $("#btnQaApproveAll")?.addEventListener("click", async () => {
+      const btn = $("#btnQaApproveAll");
+      const count = Number(qaBoard.drafts || 0);
+      if (!count) return;
+      if (!confirm(`Approve all ${count} AI draft${count === 1 ? "" : "s"} as written? You can still edit individual answers afterward.`)) return;
+      btn.disabled = true;
+      btn.textContent = "Approving…";
+      try {
+        const res = await api("/qa/approve-all", { method: "POST" });
+        if (res.ok === false) throw new Error(res.error || "Could not approve drafts.");
+        await refreshQa();
+      } catch (ex) {
+        btn.disabled = false;
+        alert(ex.message || "Could not approve drafts.");
+      }
+    });
+
+    function renderCsQuestions(data) {
+      const meta = $("#csqMeta");
+      const groupsEl = $("#csqGroups");
+      const statGrid = $("#csqStatGrid");
+      csqData = data;
+      const questions = (data && data.questions) || [];
+
+      if (data && data.running) {
+        meta.innerHTML = '<span style="color:var(--text)">Building…</span> analyzing tickets and clustering questions with AI. This can take a minute.';
+      } else if (data && data.last_error) {
+        meta.innerHTML = `Last build error: <span style="color:#b91c1c">${escapeHtml(data.last_error)}</span>`;
+      } else if (data && data.generated_at) {
+        const cacheNote = data.cache_full_hit
+          ? " · reused prior build"
+          : (data.map_cache_hits || data.map_cache_misses)
+            ? ` · AI cache ${Number(data.map_cache_hits || 0).toLocaleString()} hit / ${Number(data.map_cache_misses || 0).toLocaleString()} new`
+            : "";
+        const customerInit = Number(data.customer_initiated || 0);
+        const initNote = customerInit
+          ? ` from <b>${customerInit.toLocaleString()}</b> customer-initiated tickets (of ${Number(data.total_tickets || 0).toLocaleString()} resolved)`
+          : ` from ${Number(data.total_tickets || 0).toLocaleString()} resolved`;
+        meta.innerHTML = `Last built ${escapeHtml(fmtTime(data.generated_at))} · <b>${Number(data.tickets_analyzed || 0).toLocaleString()}</b> customer support questions identified${initNote} · model ${escapeHtml(data.model || "—")}${escapeHtml(cacheNote)}`;
+      } else {
+        meta.textContent = "Not built yet. Click Build / Refresh to mine the top 100 customer questions from your synced HubSpot tickets.";
+      }
+
+      if (!questions.length) {
+        statGrid.innerHTML = "";
+        const summary = $("#csqGroupsSummary");
+        if (summary) summary.textContent = "";
+        if (groupsEl) {
+          groupsEl.innerHTML = data && data.running
+            ? '<div class="empty" style="padding:1.25rem 1rem">Building… results will appear here.</div>'
+            : '<div class="empty" style="padding:1.25rem 1rem">No questions yet — click Build / Refresh.</div>';
+        }
+        return;
+      }
+
+      const totalAnalyzed = Number(data.tickets_analyzed || 0);
+      const totalResolved = Number(data.total_tickets || 0);
+      const customerInitiated = Number(data.customer_initiated || 0);
+      const excludedInternal = Number(data.excluded_internal || 0);
+      const llmRejected = Number(data.llm_non_support_filtered || 0);
+      const cacheHits = Number(data.map_cache_hits || 0);
+      const cacheMisses = Number(data.map_cache_misses || 0);
+      const supportPct = customerInitiated ? Math.round((totalAnalyzed / customerInitiated) * 100) : 0;
+      const catCounts = {};
+      questions.forEach((q) => { const c = csqCategoryLabel(q.category); catCounts[c] = (catCounts[c] || 0) + Number(q.count || 0); });
+      const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
+      statGrid.innerHTML = [
+        { label: "Questions surfaced", value: questions.length, sub: "real customer topics" },
+        { label: "Customer-initiated", value: customerInitiated.toLocaleString(), sub: "inbound form / email / chat / call" },
+        { label: "Excluded", value: excludedInternal.toLocaleString(), sub: "internal: reviews, sales, outreach" },
+        { label: "Support tickets", value: totalAnalyzed.toLocaleString(), sub: `${supportPct}% of customer-initiated` },
+        { label: "LLM rejected", value: llmRejected.toLocaleString(), sub: "not customer questions" },
+        { label: "AI cache", value: data.cache_full_hit ? "Reused" : cacheHits.toLocaleString(), sub: data.cache_full_hit ? "no new OpenAI map calls" : `${cacheMisses.toLocaleString()} new` },
+        { label: "Biggest category", value: topCat ? topCat[0] : "—", sub: topCat ? topCat[1].toLocaleString() + " tickets" : "" },
+      ].map((s) => `
+        <div class="stat">
+          <div class="stat__label">${escapeHtml(s.label)}</div>
+          <div class="stat__value">${escapeHtml(String(s.value))}</div>
+          <div class="stat__sub">${escapeHtml(s.sub)}</div>
+        </div>`).join("");
+
+      renderCsqGroups();
+    }
+
+    function csqGroupedQuestions() {
+      const qs = (csqData && csqData.questions) || [];
+      const groups = new Map();
+      qs.forEach((q) => {
+        const key = csqCategoryKey(q.category);
+        if (!groups.has(key)) {
+          groups.set(key, { key, label: csqCategoryLabel(q.category), tickets: 0, questions: [] });
+        }
+        const g = groups.get(key);
+        g.tickets += Number(q.count || 0);
+        g.questions.push(q);
+      });
+      const arr = [...groups.values()];
+      arr.forEach((g) => g.questions.sort((a, b) => Number(b.count || 0) - Number(a.count || 0)));
+      arr.sort((a, b) => b.tickets - a.tickets);
+      return arr;
+    }
+
+    function csqExampleList(q) {
+      return (q.examples || []).map((ex) => {
+        if (typeof ex === "string") return `<li>${escapeHtml(ex)}</li>`;
+        const subj = escapeHtml(ex.subject || `Ticket #${ex.ticket_id || ""}`);
+        const idTag = ex.ticket_id ? ` <span style="color:var(--text-muted)">#${escapeHtml(String(ex.ticket_id))}</span>` : "";
+        const issue = ex.issue && ex.issue !== ex.subject
+          ? `<div style="color:var(--text-muted);font-size:0.76rem;line-height:1.35;margin-top:0.1rem">${escapeHtml(String(ex.issue).slice(0, 260))}${String(ex.issue).length > 260 ? "…" : ""}</div>`
+          : "";
+        const title = ex.url
+          ? `<a href="${escapeHtml(ex.url)}" target="_blank" rel="noopener">${subj}</a>${idTag}`
+          : `${subj}${idTag}`;
+        return `<li>${title}${issue}</li>`;
+      }).join("");
+    }
+
+    function csqQuestionRow(q, num) {
+      const examples = csqExampleList(q);
+      const exampleBlock = examples
+        ? `<tr class="csq-examples" data-csq-rank="${q.rank}" hidden><td></td><td colspan="3"><div style="font-size:0.8rem;color:var(--text-muted);padding:0.25rem 0 0.5rem"><div style="font-weight:600;margin-bottom:0.25rem">Example tickets <span style="font-weight:400">(click to open in HubSpot)</span></div><ul style="margin:0;padding-left:1.1rem;line-height:1.6">${examples}</ul></div></td></tr>`
+        : "";
+      return `
+        <tr class="csq-row" data-csq-rank="${q.rank}" style="cursor:pointer">
+          <td class="csq-qnum">${num}</td>
+          <td style="font-weight:600;color:var(--text)">${escapeHtml(q.question || "")}</td>
+          <td>${Number(q.count || 0).toLocaleString()}</td>
+          <td>${q.share != null ? q.share + "%" : "—"}</td>
+        </tr>${exampleBlock}`;
+    }
+
+    function renderCsqGroups() {
+      const container = $("#csqGroups");
+      if (!container) return;
+      const groups = csqGroupedQuestions();
+      const summary = $("#csqGroupsSummary");
+      if (summary) {
+        summary.textContent = groups.length
+          ? `${groups.length} categories · ${((csqData && csqData.questions) || []).length} questions`
+          : "";
+      }
+      if (!groups.length) {
+        container.innerHTML = '<div class="empty" style="padding:1.25rem 1rem">No questions yet — click Build / Refresh.</div>';
+        return;
+      }
+      // On first render of a fresh build, open the biggest category so it isn't all collapsed.
+      if (!csqGroupsInitialized) {
+        csqGroupsInitialized = true;
+        csqOpenGroups = new Set([groups[0].key]);
+      }
+      container.innerHTML = groups.map((g) => {
+        const open = csqOpenGroups.has(g.key);
+        const rows = g.questions.map((q, i) => csqQuestionRow(q, i + 1)).join("");
+        const qlabel = g.questions.length === 1 ? "question" : "questions";
+        return `
+        <div class="csq-group${open ? " is-open" : ""}" data-cat-key="${escapeHtml(g.key)}">
+          <button class="csq-group__head" type="button" aria-expanded="${open}">
+            <span class="csq-group__chev" aria-hidden="true">▸</span>
+            <span class="csq-category csq-category--${escapeHtml(g.key)}">${escapeHtml(g.label)}</span>
+            <span class="csq-group__qcount">${g.questions.length} ${qlabel}</span>
+            <span class="csq-group__tickets">${g.tickets.toLocaleString()} tickets</span>
+          </button>
+          <div class="csq-group__body"${open ? "" : " hidden"}>
+            <table class="calls-table csq-group-table">
+              <thead>
+                <tr>
+                  <th style="width:44px">#</th>
+                  <th>Customer question / reason</th>
+                  <th style="width:84px">Tickets</th>
+                  <th style="width:72px">Share</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>`;
+      }).join("");
+    }
+
+    async function refreshCsQuestions() {
+      try {
+        const data = await api("/cs-questions");
+        renderCsQuestions(data);
+        if (data && data.running) startCsqPolling();
+      } catch (ex) {
+        $("#csqMeta").textContent = ex.message || "Could not load CS questions.";
+      }
+    }
+
+    function startCsqPolling() {
+      if (csqPollTimer) return;
+      csqPollTimer = setInterval(async () => {
+        try {
+          const status = await api("/cs-questions/status");
+          if (!status.running) {
+            clearInterval(csqPollTimer);
+            csqPollTimer = null;
+            const data = await api("/cs-questions");
+            renderCsQuestions(data);
+            const r = $("#csqResult");
+            if (status.last_error) {
+              r.textContent = "Build failed: " + status.last_error;
+            } else {
+              r.textContent = `Done — ${(data.questions || []).length} questions from ${Number(status.tickets_analyzed || 0).toLocaleString()} tickets.`;
+            }
+            r.hidden = false;
+          }
+        } catch {
+          clearInterval(csqPollTimer);
+          csqPollTimer = null;
+        }
+      }, 4000);
     }
 
     async function refreshSettings() {
@@ -668,8 +2000,286 @@
       $("#settingChat").value = e.support_chat_prompt || "";
     }
 
+    // ── Calendar (customer callbacks) ──────────────────────────────────────
+    const CAL_STATUS_LABELS = { requested: "Requested", confirmed: "Confirmed", completed: "Completed", cancelled: "Cancelled" };
+    const CAL_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const CAL_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    let calCursor = startOfMonth(new Date());
+    let calView = "month";
+    let calStatus = "";
+    let calAppointments = [];
+
+    function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+    function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+    function sameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
+
+    function apptDate(a) {
+      if (!a || !a.requested_at) return null;
+      const d = new Date(a.requested_at);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function toDateInputValue(d) {
+      const p = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+
+    function fmtApptTime(d) {
+      return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    }
+
+    function calContactLabel(a) {
+      const name = `${a.first_name || ""} ${a.last_name || ""}`.trim();
+      return a.dealership_name ? (name ? `${a.dealership_name} · ${name}` : a.dealership_name) : (name || "Callback");
+    }
+
+    async function refreshCalendar() {
+      try {
+        const qs = calStatus ? `?status=${encodeURIComponent(calStatus)}&limit=2000` : "?limit=2000";
+        const data = await api("/appointments" + qs);
+        calAppointments = (data.appointments || []).filter(apptDate);
+      } catch {
+        calAppointments = [];
+      }
+      renderCalendar();
+    }
+
+    function renderCalendar() {
+      renderCalStats();
+      $("#calMonthCard").hidden = calView !== "month";
+      $("#calListCard").hidden = calView !== "list";
+      document.querySelectorAll(".cal-view").forEach((b) => b.classList.toggle("is-active", b.dataset.calView === calView));
+      if (calView === "month") {
+        $("#calTitle").textContent = `${CAL_MONTHS[calCursor.getMonth()]} ${calCursor.getFullYear()}`;
+        renderCalMonth();
+      } else {
+        $("#calTitle").textContent = "Upcoming callbacks";
+        renderCalList();
+      }
+    }
+
+    function renderCalStats() {
+      const now = new Date();
+      const today0 = startOfDay(now);
+      const weekEnd = new Date(today0); weekEnd.setDate(weekEnd.getDate() + 7);
+      let upcoming = 0, thisWeek = 0, requested = 0, completed = 0;
+      calAppointments.forEach((a) => {
+        const d = apptDate(a);
+        if (!d) return;
+        const active = a.status === "requested" || a.status === "confirmed";
+        if (active && d >= today0) upcoming++;
+        if (active && d >= today0 && d < weekEnd) thisWeek++;
+        if (a.status === "requested") requested++;
+        if (a.status === "completed") completed++;
+      });
+      const stats = [
+        { label: "Upcoming", value: upcoming, sub: "scheduled callbacks" },
+        { label: "Next 7 days", value: thisWeek, sub: "this week" },
+        { label: "Awaiting confirm", value: requested, sub: "requested" },
+        { label: "Completed", value: completed, sub: "all time" },
+      ];
+      $("#calStatGrid").innerHTML = stats.map((s) => `
+        <div class="stat">
+          <div class="stat__label">${s.label}</div>
+          <div class="stat__value">${s.value}</div>
+          <div class="stat__sub">${s.sub}</div>
+        </div>`).join("");
+    }
+
+    function calChipHtml(a) {
+      const d = apptDate(a);
+      const time = d ? fmtApptTime(d) : "";
+      return `<button class="cal-chip cal-chip--${a.status}" type="button" data-appt-id="${a.id}" title="${escapeHtml(calContactLabel(a))} — ${escapeHtml(a.reason || "")}">
+        <span class="cal-chip__time">${escapeHtml(time)}</span>
+        <span class="cal-chip__label">${escapeHtml(calContactLabel(a))}</span>
+      </button>`;
+    }
+
+    function renderCalMonth() {
+      $("#calWeekdays").innerHTML = CAL_WEEKDAYS.map((d) => `<div class="cal-weekday">${d}</div>`).join("");
+      const first = startOfMonth(calCursor);
+      const gridStart = new Date(first);
+      gridStart.setDate(gridStart.getDate() - first.getDay());
+      const today = new Date();
+      const byDay = new Map();
+      calAppointments.forEach((a) => {
+        const d = apptDate(a);
+        if (!d) return;
+        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        if (!byDay.has(key)) byDay.set(key, []);
+        byDay.get(key).push(a);
+      });
+      let cells = "";
+      for (let i = 0; i < 42; i++) {
+        const day = new Date(gridStart);
+        day.setDate(gridStart.getDate() + i);
+        const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
+        const items = (byDay.get(key) || []).sort((a, b) => apptDate(a) - apptDate(b));
+        const outside = day.getMonth() !== calCursor.getMonth();
+        const isToday = sameDay(day, today);
+        const chips = items.slice(0, 3).map(calChipHtml).join("");
+        const more = items.length > 3 ? `<span class="cal-more">+${items.length - 3} more</span>` : "";
+        cells += `<div class="cal-day${outside ? " cal-day--out" : ""}${isToday ? " cal-day--today" : ""}" data-cal-date="${toDateInputValue(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0))}">
+          <div class="cal-day__num">${day.getDate()}</div>
+          <div class="cal-day__items">${chips}${more}</div>
+        </div>`;
+      }
+      $("#calGrid").innerHTML = cells;
+    }
+
+    function renderCalList() {
+      const today0 = startOfDay(new Date());
+      const upcoming = calAppointments
+        .filter((a) => { const d = apptDate(a); return d && d >= today0; })
+        .sort((a, b) => apptDate(a) - apptDate(b));
+      if (!upcoming.length) {
+        $("#calList").innerHTML = `<div class="cal-empty">No upcoming callbacks scheduled. Click <b>+ New callback</b> to add one.</div>`;
+        return;
+      }
+      let html = "";
+      let lastKey = "";
+      upcoming.forEach((a) => {
+        const d = apptDate(a);
+        const dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        if (dayKey !== lastKey) {
+          lastKey = dayKey;
+          html += `<div class="cal-list__day">${d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</div>`;
+        }
+        html += `<button class="cal-list__row" type="button" data-appt-id="${a.id}">
+          <span class="cal-list__time">${escapeHtml(fmtApptTime(d))}</span>
+          <span class="cal-list__main">
+            <span class="cal-list__contact">${escapeHtml(calContactLabel(a))}</span>
+            <span class="cal-list__reason">${escapeHtml(a.reason || "No reason given")}</span>
+          </span>
+          <span class="status-pill cal-pill--${a.status}">${escapeHtml(CAL_STATUS_LABELS[a.status] || a.status)}</span>
+        </button>`;
+      });
+      $("#calList").innerHTML = html;
+    }
+
+    // Modal
+    function openApptModal(appt, prefillLocal) {
+      const form = $("#apptForm");
+      form.reset();
+      form.id.value = appt ? appt.id : "";
+      $("#apptModalTitle").textContent = appt ? "Edit callback" : "New callback";
+      $("#apptError").hidden = true;
+      $("#apptDelete").hidden = !appt;
+      if (appt) {
+        form.dealership_name.value = appt.dealership_name || "";
+        form.first_name.value = appt.first_name || "";
+        form.last_name.value = appt.last_name || "";
+        form.phone.value = appt.phone || "";
+        form.email.value = appt.email || "";
+        form.duration_min.value = appt.duration_min || 30;
+        form.status.value = appt.status || "requested";
+        form.reason.value = appt.reason || "";
+        form.notes.value = appt.notes || "";
+        const d = apptDate(appt);
+        form.requested_at_local.value = d ? toDateInputValue(d) : "";
+      } else {
+        form.requested_at_local.value = prefillLocal || toDateInputValue(new Date(Date.now() + 3600000));
+        form.duration_min.value = 30;
+        form.status.value = "requested";
+      }
+      const modal = $("#apptModal");
+      modal.hidden = false;
+      document.body.classList.add("modal-open");
+      setTimeout(() => form.dealership_name.focus(), 30);
+    }
+
+    function closeApptModal() {
+      $("#apptModal").hidden = true;
+      document.body.classList.remove("modal-open");
+    }
+
+    async function saveAppt() {
+      const form = $("#apptForm");
+      const err = $("#apptError");
+      const local = form.requested_at_local.value;
+      if (!form.dealership_name.value.trim() || !form.first_name.value.trim() || !form.last_name.value.trim() || !form.phone.value.trim() || !local) {
+        err.textContent = "Dealership, name, phone, and date/time are required.";
+        err.hidden = false;
+        return;
+      }
+      const label = new Date(local).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      const payload = {
+        requested_at: local,
+        requested_label: label,
+        duration_min: Number(form.duration_min.value) || 30,
+        dealership_name: form.dealership_name.value.trim(),
+        first_name: form.first_name.value.trim(),
+        last_name: form.last_name.value.trim(),
+        email: form.email.value.trim(),
+        phone: form.phone.value.trim(),
+        reason: form.reason.value.trim(),
+        status: form.status.value,
+        notes: form.notes.value.trim(),
+      };
+      const id = form.id.value;
+      $("#apptSave").disabled = true;
+      try {
+        if (id) {
+          await api(`/appointments/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+          showToast("Callback updated");
+        } else {
+          await api("/appointments", { method: "POST", body: JSON.stringify(payload) });
+          showToast("Callback scheduled");
+        }
+        closeApptModal();
+        await refreshCalendar();
+      } catch (ex) {
+        err.textContent = ex.message || "Could not save.";
+        err.hidden = false;
+      } finally {
+        $("#apptSave").disabled = false;
+      }
+    }
+
+    async function deleteAppt() {
+      const id = $("#apptForm").id.value;
+      if (!id) return;
+      if (!confirm("Delete this callback? This cannot be undone.")) return;
+      try {
+        await api(`/appointments/${id}`, { method: "DELETE" });
+        showToast("Callback deleted");
+        closeApptModal();
+        await refreshCalendar();
+      } catch (ex) {
+        showToast(ex.message || "Could not delete");
+      }
+    }
+
+    $("#calPrev")?.addEventListener("click", () => { calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() - 1, 1); renderCalendar(); });
+    $("#calNext")?.addEventListener("click", () => { calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() + 1, 1); renderCalendar(); });
+    $("#calToday")?.addEventListener("click", () => { calCursor = startOfMonth(new Date()); renderCalendar(); });
+    document.querySelectorAll(".cal-view").forEach((b) => b.addEventListener("click", () => { calView = b.dataset.calView; renderCalendar(); }));
+    $("#calStatusFilter")?.addEventListener("change", (e) => { calStatus = e.target.value; refreshCalendar(); });
+    $("#calNew")?.addEventListener("click", () => openApptModal(null));
+    $("#apptSave")?.addEventListener("click", saveAppt);
+    $("#apptDelete")?.addEventListener("click", deleteAppt);
+    $("#apptForm")?.addEventListener("submit", (e) => { e.preventDefault(); saveAppt(); });
+    document.querySelectorAll("[data-appt-close]").forEach((el) => el.addEventListener("click", closeApptModal));
+    $("#calGrid")?.addEventListener("click", (e) => {
+      const chip = e.target.closest(".cal-chip");
+      if (chip) {
+        const a = calAppointments.find((x) => String(x.id) === chip.dataset.apptId);
+        if (a) openApptModal(a);
+        return;
+      }
+      const day = e.target.closest(".cal-day");
+      if (day) openApptModal(null, day.dataset.calDate);
+    });
+    $("#calList")?.addEventListener("click", (e) => {
+      const row = e.target.closest(".cal-list__row");
+      if (!row) return;
+      const a = calAppointments.find((x) => String(x.id) === row.dataset.apptId);
+      if (a) openApptModal(a);
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#apptModal").hidden) closeApptModal(); });
+
     async function refreshAll() {
-      await Promise.all([refreshOverview(), refreshSessions(), refreshKnowledge(), refreshSettings()]);
+      await Promise.all([refreshOverview(), refreshSessions(), refreshKnowledge(), refreshSettings(), refreshCsQuestions()]);
     }
 
     $("#loginForm").addEventListener("submit", async (e) => {
@@ -684,8 +2294,8 @@
         await api("/overview");
         showApp();
         await refreshAll();
-      } catch {
-        err.textContent = "Invalid password";
+      } catch (ex) {
+        err.textContent = ex && ex.message === "Unauthorized" ? "Invalid password" : "Could not load dashboard — try again";
         err.hidden = false;
         token = "";
         sessionStorage.removeItem(TOKEN_KEY);
@@ -701,7 +2311,67 @@
         document.querySelectorAll(".panel").forEach((p) => p.classList.remove("is-active"));
         $("#panel-" + btn.dataset.tab).classList.add("is-active");
         $("#pageTitle").textContent = PAGE_TITLES[btn.dataset.tab] || btn.dataset.tab;
+        if (btn.dataset.tab === "cs-questions") refreshCsQuestions().catch(() => {});
+        if (btn.dataset.tab === "calendar") refreshCalendar().catch(() => {});
+        if (btn.dataset.tab === "qa") refreshQa().catch(() => {});
       });
+    });
+
+    $("#btnCsqBuild")?.addEventListener("click", async () => {
+      const btn = $("#btnCsqBuild");
+      const r = $("#csqResult");
+      btn.disabled = true;
+      r.hidden = true;
+      try {
+        const res = await api("/cs-questions/rebuild", { method: "POST" });
+        if (res.ok === false) {
+          r.textContent = res.error || "Could not start build.";
+          r.hidden = false;
+        } else {
+          await refreshCsQuestions();
+          startCsqPolling();
+        }
+      } catch (ex) {
+        r.textContent = ex.message || "Could not start build.";
+        r.hidden = false;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $("#csqGroups")?.addEventListener("click", (event) => {
+      const head = event.target.closest(".csq-group__head");
+      if (head) {
+        const group = head.closest(".csq-group");
+        if (!group) return;
+        const key = group.dataset.catKey;
+        const bodyEl = group.querySelector(".csq-group__body");
+        const open = !group.classList.contains("is-open");
+        group.classList.toggle("is-open", open);
+        if (bodyEl) bodyEl.hidden = !open;
+        head.setAttribute("aria-expanded", String(open));
+        if (key) {
+          if (open) csqOpenGroups.add(key);
+          else csqOpenGroups.delete(key);
+        }
+        return;
+      }
+      const row = event.target.closest(".csq-row");
+      if (row) {
+        const rank = row.dataset.csqRank;
+        const ex = document.querySelector(`.csq-examples[data-csq-rank="${rank}"]`);
+        if (ex) ex.hidden = !ex.hidden;
+      }
+    });
+
+    $("#csqExpandAll")?.addEventListener("click", () => {
+      csqGroupedQuestions().forEach((g) => csqOpenGroups.add(g.key));
+      renderCsqGroups();
+    });
+
+    $("#csqCollapseAll")?.addEventListener("click", () => {
+      csqOpenGroups.clear();
+      renderCsqGroups();
     });
 
     document.querySelectorAll(".kb-subnav__btn").forEach((btn) => {
@@ -716,23 +2386,63 @@
     });
 
     $("#kbSourceFilter")?.addEventListener("input", () => {
-      renderKnowledgeDocs({ docs: cachedKbDocs, groups: groupKbDocs(cachedKbDocs) });
+      renderKnowledgeDocs({ docs: cachedKbDocs, group_totals: cachedGroupTotals, ticket_total: cachedTicketTotal });
     });
 
-    function groupKbDocs(docs) {
-      const groups = {};
-      (docs || []).forEach((doc) => {
-        const key = doc.source_label || doc.kind || "Other";
-        groups[key] = (groups[key] || 0) + 1;
-      });
-      return groups;
-    }
+    $("#kbDocList").addEventListener("change", (event) => {
+      const enableInput = event.target.closest("[data-kb-enable]");
+      if (!enableInput) return;
+      event.stopPropagation();
+      const source = enableInput.dataset.kbEnable;
+      setKbSourceEnabled(source, enableInput.checked);
+    });
+
+    $("#kbDocList").addEventListener("input", (event) => {
+      const search = event.target.closest("#kbEmailSearch");
+      if (!search) return;
+      const value = search.value.trim();
+      if (kbEmailSearchTimer) clearTimeout(kbEmailSearchTimer);
+      kbEmailSearchTimer = setTimeout(() => {
+        if (value === kbEmailTicketQuery) return;
+        kbEmailTicketQuery = value;
+        loadEmailTickets(true);
+      }, 300);
+    });
 
     $("#kbDocList").addEventListener("click", (event) => {
-      const moreBtn = event.target.closest("[data-kb-group]");
+      if (event.target.closest(".kb-source-toggle")) {
+        event.stopPropagation();
+        return;
+      }
+      const loadTicketsBtn = event.target.closest("[data-kb-load-tickets]");
+      if (loadTicketsBtn) {
+        loadMoreKbTickets().catch((err) => showToast(err.message || "Could not load more tickets"));
+        return;
+      }
+      const emailToggle = event.target.closest("[data-kb-email-toggle]");
+      if (emailToggle) {
+        kbEmailGroupOpen = !kbEmailGroupOpen;
+        if (kbEmailGroupOpen && !kbEmailTicketDocs.length) loadEmailTickets(true);
+        else rerenderKbDocList();
+        return;
+      }
+      const emailMoreBtn = event.target.closest("[data-kb-email-more]");
+      if (emailMoreBtn) {
+        loadEmailTickets(false);
+        return;
+      }
+      const toggleBtn = event.target.closest("[data-kb-toggle]");
+      if (toggleBtn) {
+        const source = toggleBtn.dataset.kbToggle;
+        if (kbOpenGroups.has(source)) kbOpenGroups.delete(source);
+        else kbOpenGroups.add(source);
+        renderKnowledgeDocs({ docs: cachedKbDocs, group_totals: cachedGroupTotals, ticket_total: cachedTicketTotal });
+        return;
+      }
+      const moreBtn = event.target.closest("[data-kb-show-all]");
       if (moreBtn) {
-        kbExpandedGroups.add(moreBtn.dataset.kbGroup);
-        renderKnowledgeDocs({ docs: cachedKbDocs, groups: groupKbDocs(cachedKbDocs) });
+        kbShowAllGroups.add(moreBtn.dataset.kbShowAll);
+        renderKnowledgeDocs({ docs: cachedKbDocs, group_totals: cachedGroupTotals, ticket_total: cachedTicketTotal });
         return;
       }
       const row = event.target.closest(".kb-doc-row[data-doc-id]");
@@ -741,44 +2451,640 @@
 
     $("#kbDocPreviewClose")?.addEventListener("click", closeKbDocPreview);
     $("#kbDocPreviewBackdrop")?.addEventListener("click", closeKbDocPreview);
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") closeKbDocPreview();
+
+    $("#sessionsBody").addEventListener("click", (event) => {
+      if (event.target.closest("a")) return;
+      const row = event.target.closest("tr[data-call-id]");
+      if (row) openSessionDetail(row.dataset.callId);
     });
 
-    $("#btnKbSearch").addEventListener("click", async () => {
+    $("#sessionFilters")?.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-session-filter]");
+      if (!btn) return;
+      sessionFilter = btn.dataset.sessionFilter;
+      document.querySelectorAll("#sessionFilters .filter-pill").forEach((b) => b.classList.toggle("is-active", b === btn));
+      renderSessions(cachedCalls);
+    });
+
+    $("#sessionSearch")?.addEventListener("input", () => renderSessions(cachedCalls));
+
+    $("#sessionDetailClose")?.addEventListener("click", closeSessionDetail);
+    $("#sessionDetailBackdrop")?.addEventListener("click", closeSessionDetail);
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeKbDocPreview();
+        closeSessionDetail();
+      }
+    });
+
+    function matchStrengthLabel(strength) {
+      return ({
+        direct: "Used directly in answer",
+        partial: "Partially reflected in answer",
+        context_only: "Retrieved for context",
+      })[strength] || "Retrieved for context";
+    }
+
+    function relevanceFromScore(score, maxScore, isTop) {
+      const ratio = maxScore > 0 ? score / maxScore : 0;
+      const pct = Math.round(ratio * 100);
+      if (isTop) return { label: "Best match", tier: "best", pct };
+      if (ratio >= 0.75) return { label: "Strong match", tier: "strong", pct };
+      if (ratio >= 0.55) return { label: "Good match", tier: "good", pct };
+      if (ratio >= 0.35) return { label: "Moderate match", tier: "moderate", pct };
+      return { label: "Related", tier: "related", pct };
+    }
+
+    function renderRelevanceBadge(source, allSources) {
+      if (source.relevance_label) {
+        const tier = source.relevance_tier || "moderate";
+        const pct = source.relevance_pct != null ? source.relevance_pct : "";
+        return `<span class="kb-relevance kb-relevance--${escapeHtml(tier)}" title="How closely this source matched your question">
+          <span class="kb-relevance__label">${escapeHtml(source.relevance_label)}</span>
+          ${pct !== "" ? `<span class="kb-relevance__pct">${pct}%</span>` : ""}
+        </span>`;
+      }
+      const scores = (allSources || []).map((s) => Number(s.score) || 0);
+      const maxScore = scores.length ? Math.max(...scores) : 0;
+      const score = Number(source.score) || 0;
+      const isTop = maxScore > 0 && Math.abs(score - maxScore) < 1e-9;
+      const rel = relevanceFromScore(score, maxScore, isTop);
+      return `<span class="kb-relevance kb-relevance--${escapeHtml(rel.tier)}" title="How closely this source matched your question">
+        <span class="kb-relevance__label">${escapeHtml(rel.label)}</span>
+        <span class="kb-relevance__pct">${rel.pct}%</span>
+      </span>`;
+    }
+
+    function renderResponseWithCitations(response, sources) {
+      let out = escapeHtml(response || "");
+      const withExcerpts = (sources || [])
+        .filter((s) => (s.used_excerpts || []).length)
+        .sort((a, b) => (b.used_excerpts?.[0]?.length || 0) - (a.used_excerpts?.[0]?.length || 0));
+
+      for (const source of withExcerpts) {
+        const cite = source.citation_index;
+        for (const excerpt of source.used_excerpts || []) {
+          const idx = response.toLowerCase().indexOf(excerpt.toLowerCase());
+          if (idx < 0) continue;
+          const rawSlice = response.slice(idx, idx + excerpt.length);
+          const escapedSlice = escapeHtml(rawSlice);
+          const wrapped = `<span class="kb-ask__cite" data-cite="${cite}"><mark class="kb-used">${escapedSlice}</mark><sup class="kb-ask__cite-num">[${cite}]</sup></span>`;
+          if (out.includes(escapedSlice) && !out.includes(wrapped)) {
+            out = out.replace(escapedSlice, wrapped);
+          }
+        }
+      }
+      return out;
+    }
+
+    function citationLinks(citations) {
+      return (citations || [])
+        .filter((c) => c != null)
+        .map((c) => `<button type="button" class="kb-ticket-case__cite" data-cite="${escapeHtml(c)}">[${escapeHtml(c)}]</button>`)
+        .join("");
+    }
+
+    function solutionScoreChip(score) {
+      const s = Number(score || 0);
+      let tier = "thin";
+      let label = "thin";
+      if (s >= 3) { tier = "strong"; label = "strong"; }
+      else if (s >= 1) { tier = "medium"; label = "some"; }
+      return `<span class="kb-solscore kb-solscore--${tier}" title="Solution-quality score — how much this ticket shows the issue actually being worked toward a resolution (resolution/close notes, agent replies, call summaries). Thin stub tickets are filtered out.">Solution ${s.toFixed(1)} · ${label}</span>`;
+    }
+
+    function renderHelpDeskCases(cases, sources) {
+      const list = cases || [];
+      const pinned = pinnedDocIdSet();
+      if (!list.length) {
+        return `<div class="kb-ticket-cases kb-ticket-cases--empty">
+          <div class="kb-ticket-cases__title">Help Desk ticket search</div>
+          <div class="kb-ticket-cases__note">No related resolved HubSpot tickets were pulled for this answer.</div>
+        </div>`;
+      }
+      return `<div class="kb-ticket-cases">
+        <div class="kb-ticket-cases__head">
+          <div>
+            <div class="kb-ticket-cases__title">Help Desk tickets searched</div>
+            <div class="kb-ticket-cases__note">These are the related resolved HubSpot tickets selected by the new case-search pass before Hannah answered.</div>
+          </div>
+          <span class="kb-ticket-cases__count">${list.length} case${list.length === 1 ? "" : "s"}</span>
+        </div>
+        <div class="kb-ticket-cases__grid">
+          ${list.map((c) => {
+            const ticketId = c.ticket_id || "";
+            const title = c.title || c.doc_id || "HubSpot ticket";
+            const usedCount = Number(c.used_excerpt_count || 0);
+            const citationBlock = citationLinks(c.citations);
+            const isPinned = !!c.pinned || pinned.has(c.doc_id);
+            const hubspotLink = c.ticket_url
+              ? `<a class="kb-ticket-case__external" href="${escapeHtml(c.ticket_url)}" target="_blank" rel="noopener">Open in HubSpot</a>`
+              : "";
+            const pinBtn = isPinned
+              ? `<span class="kb-pin-chip" title="This ticket is pinned to this type of question — Hannah will use it here. Manage in the Playbook tab.">Pinned answer</span>`
+              : `<button type="button" class="kb-pin-btn" data-pin-doc-id="${escapeHtml(c.doc_id)}" title="Always use this ticket to answer this question and closely related ones.">Pin to this question</button>`;
+            return `<article class="kb-ticket-case ${usedCount ? "kb-ticket-case--used" : ""} ${isPinned ? "kb-ticket-case--pinned" : ""}">
+              <div class="kb-ticket-case__rank">Case ${escapeHtml(c.case_rank || "")}</div>
+              <div class="kb-ticket-case__title">
+                <button type="button" class="kb-result__title--link" data-doc-id="${escapeHtml(c.doc_id)}">
+                  ${escapeHtml(ticketId ? `Ticket #${ticketId}` : title)}
+                </button>
+              </div>
+              <div class="kb-ticket-case__subject">${escapeHtml(title)}</div>
+              <div class="kb-ticket-case__meta">
+                ${usedCount ? `${usedCount} exact excerpt${usedCount === 1 ? "" : "s"} used` : "Retrieved as related context"}
+                ${c.source_count ? ` · ${escapeHtml(c.source_count)} chunk${Number(c.source_count) === 1 ? "" : "s"}` : ""}
+              </div>
+              <div class="kb-ticket-case__scores">${solutionScoreChip(c.solution_score)}${c.email_worked ? `<span class="kb-emailworked-chip" title="Worked via email — prioritized as a source because these carry the richest step-by-step fixes.">Email-worked</span>` : ""}</div>
+              <div class="kb-ticket-case__actions">${pinBtn}${citationBlock}${hubspotLink}</div>
+            </article>`;
+          }).join("")}
+        </div>
+      </div>`;
+    }
+
+    function sourceContribRank(s) {
+      const st = s.match_strength || "context_only";
+      if (st === "direct" || (s.used_excerpts || []).length) return 0;
+      if (st === "partial") return 1;
+      return 2;
+    }
+
+    function sourceContribLabel(s) {
+      const st = s.match_strength || "context_only";
+      if (st === "direct" || (s.used_excerpts || []).length) return "Quoted in answer";
+      if (st === "partial") return "Reflected in answer";
+      return "Background context";
+    }
+
+    function sourceContribTier(s) {
+      const st = s.match_strength || "context_only";
+      if (st === "direct" || (s.used_excerpts || []).length) return "direct";
+      if (st === "partial") return "partial";
+      return "context";
+    }
+
+    // Plain-language summary, directly under the answer, of exactly which
+    // sources fed the response — ranked by how much each contributed.
+    function renderSourcesSummary(sources) {
+      const list = (sources || []).filter((s) => s.citation_index != null);
+      if (!list.length) {
+        return `<div class="kb-ask__used-sources kb-ask__used-sources--empty">
+          <span class="kb-ask__used-sources-title">Sources used for this answer</span>
+          <span class="kb-ask__used-sources-none">No knowledge sources were retrieved — Hannah could not ground this answer.</span>
+        </div>`;
+      }
+      const sorted = list.slice().sort((a, b) => {
+        const r = sourceContribRank(a) - sourceContribRank(b);
+        if (r !== 0) return r;
+        return (Number(b.relevance_pct || b.score || 0)) - (Number(a.relevance_pct || a.score || 0));
+      });
+      const quoted = list.filter((s) => sourceContribTier(s) === "direct").length;
+      const rows = sorted.map((s) => {
+        const cite = s.citation_index;
+        const tier = sourceContribTier(s);
+        const isTicket = s.source_group === "helpdesk_ticket";
+        const typeLabel = isTicket
+          ? (s.ticket_id ? `HubSpot ticket #${s.ticket_id}` : "HubSpot ticket")
+          : kbSourceLabel(s.source_label || s.kind || "Source");
+        const badge = kbBadgeClass(kbSourceLabel(s.source_label));
+        const pct = s.relevance_pct != null ? `<span class="kb-used-src__pct">${escapeHtml(s.relevance_pct)}% match</span>` : "";
+        return `<button type="button" class="kb-used-src kb-used-src--${tier}" data-cite="${escapeHtml(cite)}" title="Jump to the exact excerpt from this source">
+          <span class="kb-used-src__num">${escapeHtml(cite)}</span>
+          <span class="kb-used-src__body">
+            <span class="kb-used-src__title">${escapeHtml(s.title || s.doc_id)}</span>
+            <span class="kb-used-src__type"><span class="kb-source-dot kb-source-dot--${badge}"></span>${escapeHtml(typeLabel)}${pct}</span>
+          </span>
+          <span class="kb-used-src__contrib kb-used-src__contrib--${tier}">${escapeHtml(sourceContribLabel(s))}</span>
+        </button>`;
+      }).join("");
+      return `<div class="kb-ask__used-sources">
+        <div class="kb-ask__used-sources-head">
+          <span class="kb-ask__used-sources-title">Sources used for this answer</span>
+          <span class="kb-ask__used-sources-sub">${list.length} retrieved · ${quoted} quoted directly</span>
+        </div>
+        <div class="kb-used-list">${rows}</div>
+        <div class="kb-ask__used-sources-hint">Click any source to jump to the exact text Hannah pulled from it.</div>
+      </div>`;
+    }
+
+    function renderSourceUsageCard(source, index, allSources) {
+      const cite = source.citation_index || (index + 1);
+      const strength = source.match_strength || "context_only";
+      const excerpts = source.used_excerpts || [];
+      const isTicketCase = source.source_group === "helpdesk_ticket";
+      const ticketBadge = isTicketCase
+        ? `<span class="kb-ticket-badge">Help Desk Case ${escapeHtml(source.case_rank || "")}${source.ticket_id ? ` · #${escapeHtml(source.ticket_id)}` : ""}</span>${solutionScoreChip(source.solution_score)}${source.email_worked ? `<span class="kb-emailworked-chip" title="Worked via email — prioritized source.">Email-worked</span>` : ""}`
+        : "";
+      const hubspotLink = isTicketCase && source.ticket_url
+        ? `<a class="kb-source-cite__external" href="${escapeHtml(source.ticket_url)}" target="_blank" rel="noopener">Open HubSpot ticket</a>`
+        : "";
+      const usedBlock = excerpts.length
+        ? `<div class="kb-source-cite__used">
+            ${excerpts.map((ex) => `<div class="kb-source-cite__quote"><mark class="kb-used">${escapeHtml(ex)}</mark></div>`).join("")}
+          </div>`
+        : `<div class="kb-source-cite__empty">No exact phrases from this chunk appeared in Hannah's final answer. It was still retrieved as background context.</div>`;
+
+      const fullChunk = source.used_excerpt_html
+        ? `<div class="kb-source-cite__full-text">${source.used_excerpt_html}</div>`
+        : `<pre class="kb-result__text kb-result__text--muted">${escapeHtml(source.text || "")}</pre>`;
+
+      return `
+        <div class="kb-source-cite kb-source-cite--${escapeHtml(strength)}" id="kb-cite-${cite}">
+          <div class="kb-result__head">
+            <span class="kb-source-cite__num">[${cite}]</span>
+            <button type="button" class="kb-result__title kb-result__title--link" data-doc-id="${escapeHtml(source.doc_id)}">${escapeHtml(source.title || source.doc_id)}</button>
+            ${ticketBadge}
+            <span class="kb-source-cite__badge">${escapeHtml(matchStrengthLabel(strength))}</span>
+            ${renderRelevanceBadge(source, allSources)}
+          </div>
+          <div class="kb-result__meta">${escapeHtml([source.source_label, source.category, source.via, source.doc_id].filter(Boolean).join(" · "))}</div>
+          ${hubspotLink ? `<div class="kb-source-cite__links">${hubspotLink}</div>` : ""}
+          <div class="kb-source-cite__label">What Hannah pulled from this source</div>
+          ${usedBlock}
+          <details class="kb-source-cite__details">
+            <summary>View full retrieved excerpt</summary>
+            ${fullChunk}
+          </details>
+        </div>`;
+    }
+
+    let lastKbAsk = null;
+
+    function setKbFbMsg(text, kind) {
+      const msg = $("#kbAskFbMsg");
+      if (!msg) return;
+      if (!text) { msg.hidden = true; msg.textContent = ""; return; }
+      msg.hidden = false;
+      msg.className = "kb-ask__fb-msg" + (kind ? " kb-ask__fb-msg--" + kind : "");
+      msg.textContent = text;
+    }
+
+    async function saveKbCorrection(answer, sourceBtnId) {
+      if (!lastKbAsk || !lastKbAsk.question) return;
+      const text = (answer || "").trim();
+      if (!text) { setKbFbMsg("Enter the correct answer first.", "error"); return; }
+      const btn = sourceBtnId ? $("#" + sourceBtnId) : null;
+      const approve = $("#kbFbApprove");
+      const prev = btn ? btn.innerHTML : "";
+      if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+      if (approve) approve.disabled = true;
+      try {
+        const res = await api("/knowledge/playbook/entry", {
+          method: "POST",
+          body: JSON.stringify({ title: lastKbAsk.question, content: text }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Could not save.");
+        if (btn) { btn.disabled = false; btn.innerHTML = prev; }
+        if (approve) approve.disabled = false;
+        const editor = $("#kbAskEditor");
+        const fb = $("#kbAskFeedback");
+        if (editor) editor.hidden = true;
+        if (fb) fb.hidden = true;
+        setKbFbMsg("Saved to the playbook — Hannah will use this answer from now on.", "ok");
+        refreshKnowledge().catch(() => {});
+      } catch (ex) {
+        setKbFbMsg(ex.message || "Could not save the answer.", "error");
+        if (btn) { btn.disabled = false; btn.innerHTML = prev; }
+        if (approve) approve.disabled = false;
+      }
+    }
+
+    async function regenerateKbAnswer(info) {
+      if (!lastKbAsk || !lastKbAsk.question) return;
+      const text = (info || "").trim();
+      if (!text) { setKbFbMsg("Enter the correct information first.", "error"); return; }
+      const btn = $("#kbFbRegenerate");
+      const save = $("#kbFbSave");
+      const prev = btn ? btn.innerHTML : "";
+      if (btn) { btn.disabled = true; btn.textContent = "Regenerating…"; }
+      if (save) save.disabled = true;
+      setKbFbMsg("Regenerating Hannah's response…", "");
+      try {
+        const res = await api("/knowledge/ask/regenerate", {
+          method: "POST",
+          body: JSON.stringify({ q: lastKbAsk.question, correct_info: text }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Could not regenerate.");
+        const newResponse = res.response || "";
+        const newSources = res.sources || lastKbAsk.sources || [];
+        lastKbAsk.response = newResponse;
+        lastKbAsk.sources = newSources;
+        const respEl = $("#kbAskResponse");
+        if (respEl) {
+          respEl.innerHTML = renderResponseWithCitations(newResponse, newSources);
+          respEl.classList.add("kb-ask__response--flash");
+          setTimeout(() => respEl.classList.remove("kb-ask__response--flash"), 1200);
+        }
+        const summaryEl = $("#kbAskSourcesSummary");
+        if (summaryEl) summaryEl.innerHTML = renderSourcesSummary(newSources);
+        const textarea = $("#kbAskEditorText");
+        if (textarea) textarea.value = newResponse;
+        setKbFbMsg("Regenerated — review the new response above, then save it as approved.", "ok");
+      } catch (ex) {
+        setKbFbMsg(ex.message || "Could not regenerate the response.", "error");
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = prev; }
+        if (save) save.disabled = false;
+      }
+    }
+
+    async function runKbAsk() {
       const q = $("#kbSearchQuery").value.trim();
       const el = $("#kbSearchResults");
       if (!q) {
-        el.innerHTML = '<div class="kb-empty">Enter a query first.</div>';
+        el.innerHTML = '<div class="kb-empty">Enter a question first.</div>';
         return;
       }
-      el.innerHTML = '<div class="kb-empty">Searching…</div>';
+      el.innerHTML = '<div class="kb-empty">Generating Hannah\'s response…</div>';
+      $("#btnKbSearch").disabled = true;
       try {
-        const data = await api("/knowledge/search?q=" + encodeURIComponent(q));
-        const results = data.results || [];
-        if (!results.length) {
-          el.innerHTML = '<div class="kb-empty">No matches.</div>';
+        const data = await api("/knowledge/ask", {
+          method: "POST",
+          body: JSON.stringify({ q }),
+        });
+        if (!data.ok) {
+          el.innerHTML = `<div class="kb-empty">${escapeHtml(data.error || "Could not generate response.")}</div>`;
           return;
         }
-        el.innerHTML = results.map((r, i) => {
-          const cached = kbDocLookup().get(r.doc_id);
-          const title = cached?.title || r.doc_id || "Document";
-          const source = cached?.source_label || "";
-          return `
-          <div class="kb-result">
-            <div class="kb-result__head">
-              <span class="kb-result__rank">#${i + 1}</span>
-              <span class="kb-result__title">${escapeHtml(title)}</span>
-              <span class="kb-result__score">${r.score != null ? "score " + r.score : ""}</span>
+
+        const sources = data.sources || [];
+        const helpdeskCases = data.helpdesk_cases || [];
+        const toolNote = (data.tool_queries || []).length
+          ? `<div class="kb-ask__note">Also searched: ${escapeHtml((data.tool_queries || []).join(" · "))}</div>`
+          : "";
+        const escalated = data.escalated
+          ? '<div class="kb-ask__flag">Would escalate to human support</div>'
+          : "";
+
+        lastKbAsk = { question: q, response: data.response || "", sources, helpdeskCases };
+
+        el.innerHTML = `
+          <div class="kb-ask">
+            <div class="kb-ask__section">
+              <div class="kb-ask__label">Hannah's response</div>
+              <div class="kb-ask__response" id="kbAskResponse">${renderResponseWithCitations(data.response || "", sources)}</div>
+              <div class="kb-ask__meta">${escapeHtml(data.model || "model")}${data.issue_category ? " · " + escapeHtml(data.issue_category) : ""}</div>
+              ${escalated}
+              <div id="kbAskSourcesSummary">${renderSourcesSummary(sources)}</div>
+              <div class="kb-ask__feedback" id="kbAskFeedback">
+                <span class="kb-ask__feedback-q">Is this the answer Hannah should give?</span>
+                <div class="kb-ask__feedback-actions">
+                  <button class="btn btn--sm kb-fb-btn" id="kbFbApprove" type="button">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M6.2 11.4 2.8 8l-1.1 1.1 4.5 4.5 8-8L13.1 4.5z"/></svg>
+                    Approve answer
+                  </button>
+                  <button class="btn btn--sm kb-fb-btn" id="kbFbEdit" type="button">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M11.6 1.4 14.6 4.4 5.4 13.6 1.4 14.6 2.4 10.6zM10.5 2.5 3.4 9.6l-.5 2 2-.5 7.1-7.1z"/></svg>
+                    It's wrong — fix it
+                  </button>
+                </div>
+              </div>
+              <div class="kb-ask__editor" id="kbAskEditor" hidden>
+                <div class="kb-ask__label">Edit Hannah's answer</div>
+                <p class="kb-ask__editor-hint">Hannah's current response is loaded below — edit it so it's correct, then <strong>Save approved answer</strong>. Or, describe the right facts/steps and click <strong>Regenerate response</strong> to have Hannah rewrite it for you.</p>
+                <textarea class="kb-ask__editor-text" id="kbAskEditorText" rows="5"></textarea>
+                <div class="kb-ask__editor-foot">
+                  <span class="kb-ask__editor-note">Saved as an <strong>approved playbook answer</strong> — Hannah starts using it immediately.</span>
+                  <span class="kb-ask__editor-spacer"></span>
+                  <button class="btn btn--sm kb-fb-btn" id="kbFbCancel" type="button">Cancel</button>
+                  <button class="btn btn--sm kb-fb-btn" id="kbFbRegenerate" type="button">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M13.6 8a5.6 5.6 0 1 1-1.64-3.96l.04.04V2.4h1.4v3.6H9.8V4.6h1.86A4.2 4.2 0 1 0 12.2 8z"/></svg>
+                    Regenerate response
+                  </button>
+                  <button class="btn btn--sm btn--primary btn--red" id="kbFbSave" type="button">Save approved answer</button>
+                </div>
+              </div>
+              <div class="kb-ask__fb-msg" id="kbAskFbMsg" hidden></div>
             </div>
-            <div class="kb-result__meta">${escapeHtml([source, cached?.category, r.doc_id].filter(Boolean).join(" · "))}</div>
-            <pre class="kb-result__text">${escapeHtml(r.text || "")}</pre>
+            <div class="kb-ask__section">
+              <div class="kb-ask__label">Sources and exact excerpts used</div>
+              <p class="kb-ask__note">Yellow highlights show the specific lines from each source that match Hannah's answer. The Help Desk section shows the exact HubSpot tickets found by the ticket-case search.</p>
+              ${toolNote}
+              <div id="kbHelpDeskCases">${renderHelpDeskCases(helpdeskCases, sources)}</div>
+              ${sources.length ? sources.map((s, i) => renderSourceUsageCard(s, i, sources)).join("") : '<div class="kb-empty">No sources retrieved.</div>'}
+            </div>
           </div>`;
-        }).join("");
       } catch (err) {
         el.innerHTML = `<div class="kb-empty">${escapeHtml(err.message)}</div>`;
+      } finally {
+        $("#btnKbSearch").disabled = false;
       }
+    }
+
+    $("#btnKbSearch").addEventListener("click", () => runKbAsk());
+    $("#kbSearchQuery").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") runKbAsk();
     });
+
+    $("#kbSearchResults").addEventListener("click", (event) => {
+      if (event.target.closest("#kbFbEdit")) {
+        const editor = $("#kbAskEditor");
+        const textarea = $("#kbAskEditorText");
+        if (textarea) {
+          textarea.value = (lastKbAsk && lastKbAsk.response) ? lastKbAsk.response : "";
+        }
+        if (editor) editor.hidden = false;
+        setKbFbMsg("");
+        textarea?.focus();
+        return;
+      }
+      if (event.target.closest("#kbFbCancel")) {
+        const editor = $("#kbAskEditor");
+        if (editor) editor.hidden = true;
+        return;
+      }
+      if (event.target.closest("#kbFbRegenerate")) {
+        const textarea = $("#kbAskEditorText");
+        regenerateKbAnswer(textarea ? textarea.value : "");
+        return;
+      }
+      if (event.target.closest("#kbFbApprove")) {
+        saveKbCorrection(lastKbAsk ? lastKbAsk.response : "", "kbFbApprove");
+        return;
+      }
+      if (event.target.closest("#kbFbSave")) {
+        const textarea = $("#kbAskEditorText");
+        saveKbCorrection(textarea ? textarea.value : "", "kbFbSave");
+        return;
+      }
+      const pinBtn = event.target.closest("[data-pin-doc-id]");
+      if (pinBtn && pinBtn.dataset.pinDocId) {
+        pinTicketToQuestion(pinBtn.dataset.pinDocId, pinBtn);
+        return;
+      }
+      const citeLink = event.target.closest("[data-cite]");
+      if (citeLink && citeLink.dataset.cite) {
+        const target = document.getElementById(`kb-cite-${citeLink.dataset.cite}`);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          target.classList.add("kb-source-cite--flash");
+          setTimeout(() => target.classList.remove("kb-source-cite--flash"), 1200);
+        }
+        return;
+      }
+      const link = event.target.closest("[data-doc-id]");
+      if (link && link.dataset.docId) openKbDocPreview(link.dataset.docId);
+    });
+
+    async function pinTicketToQuestion(docId, btn) {
+      if (!lastKbAsk || !lastKbAsk.question) return;
+      const prev = btn ? btn.textContent : "";
+      if (btn) { btn.disabled = true; btn.textContent = "Pinning…"; }
+      try {
+        const res = await api("/knowledge/ticket-pins", {
+          method: "POST",
+          body: JSON.stringify({ topic: lastKbAsk.question, doc_id: docId }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Could not pin ticket.");
+        await loadTicketPins();
+        const host = $("#kbHelpDeskCases");
+        if (host && lastKbAsk) {
+          host.innerHTML = renderHelpDeskCases(lastKbAsk.helpdeskCases || [], lastKbAsk.sources || []);
+        }
+        showToast("Pinned — Hannah will use this ticket for this question.");
+      } catch (ex) {
+        if (btn) { btn.disabled = false; btn.textContent = prev; }
+        showToast(ex.message || "Could not pin ticket.");
+      }
+    }
+
+    async function unpinTicket(pinId) {
+      try {
+        const res = await api(`/knowledge/ticket-pins/${encodeURIComponent(pinId)}`, { method: "DELETE" });
+        if (res.ok === false) throw new Error(res.error || "Could not remove pin.");
+        await loadTicketPins();
+        renderTicketPins();
+        const host = $("#kbHelpDeskCases");
+        if (host && lastKbAsk) {
+          host.innerHTML = renderHelpDeskCases(lastKbAsk.helpdeskCases || [], lastKbAsk.sources || []);
+        }
+        showToast("Pin removed.");
+      } catch (ex) {
+        showToast(ex.message || "Could not remove pin.");
+      }
+    }
+
+    async function loadTicketPins() {
+      try {
+        const data = await api("/knowledge/ticket-pins");
+        kbTicketPins = (data && data.pins) || [];
+      } catch (err) {
+        kbTicketPins = [];
+      }
+    }
+
+    $("#kbTicketPinsList")?.addEventListener("click", (event) => {
+      const removeBtn = event.target.closest("[data-unpin-id]");
+      if (removeBtn && removeBtn.dataset.unpinId) unpinTicket(removeBtn.dataset.unpinId);
+    });
+
+    async function reloadPlaybook() {
+      const pb = await api("/knowledge/playbook");
+      kbPlaybookEditable = pb.editable !== false;
+      renderPlaybook(pb.entries || []);
+    }
+
+    async function removePlaybookEntry(entryId, btn) {
+      if (!entryId) return;
+      if (!confirm("Remove this answer from the learned playbook? Hannah will stop using it.")) return;
+      const prev = btn ? btn.textContent : "";
+      if (btn) { btn.disabled = true; btn.textContent = "Removing…"; }
+      try {
+        const res = await api(`/knowledge/playbook/entry/${encodeURIComponent(entryId)}`, { method: "DELETE" });
+        if (res.ok === false) throw new Error(res.error || "Could not remove entry.");
+        await reloadPlaybook();
+        showToast("Removed from the playbook.");
+      } catch (ex) {
+        if (btn) { btn.disabled = false; btn.textContent = prev; }
+        showToast(ex.message || "Could not remove entry.");
+      }
+    }
+
+    function setPlaybookAddMsg(text, kind) {
+      const msg = $("#kbPlaybookAddMsg");
+      if (!msg) return;
+      msg.textContent = text || "";
+      msg.className = "kb-playbook-add__msg" + (kind ? " is-" + kind : "");
+    }
+
+    function togglePlaybookAddForm(show) {
+      const form = $("#kbPlaybookAddForm");
+      if (!form) return;
+      const next = show == null ? form.hidden : show;
+      form.hidden = !next;
+      if (next) {
+        setPlaybookAddMsg("");
+        $("#kbPlaybookAddTitle")?.focus();
+      }
+    }
+
+    async function addPlaybookEntry() {
+      const titleEl = $("#kbPlaybookAddTitle");
+      const bodyEl = $("#kbPlaybookAddBody");
+      const saveBtn = $("#kbPlaybookAddSave");
+      const title = (titleEl?.value || "").trim();
+      const content = (bodyEl?.value || "").trim();
+      if (!title) { setPlaybookAddMsg("Enter a question or topic.", "error"); titleEl?.focus(); return; }
+      if (!content) { setPlaybookAddMsg("Enter the answer Hannah should give.", "error"); bodyEl?.focus(); return; }
+      const prev = saveBtn ? saveBtn.textContent : "";
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Adding…"; }
+      try {
+        const res = await api("/knowledge/playbook/entry", {
+          method: "POST",
+          body: JSON.stringify({ title, content }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Could not add entry.");
+        if (titleEl) titleEl.value = "";
+        if (bodyEl) bodyEl.value = "";
+        togglePlaybookAddForm(false);
+        await reloadPlaybook();
+        showToast("Added to the playbook — Hannah will use it now.");
+      } catch (ex) {
+        setPlaybookAddMsg(ex.message || "Could not add entry.", "error");
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prev; }
+      }
+    }
+
+    $("#kbPlaybookList")?.addEventListener("click", (event) => {
+      const rm = event.target.closest("[data-pb-remove]");
+      if (rm && rm.dataset.pbRemove) removePlaybookEntry(rm.dataset.pbRemove, rm);
+    });
+    $("#kbPlaybookAddToggle")?.addEventListener("click", () => togglePlaybookAddForm());
+    $("#kbPlaybookAddCancel")?.addEventListener("click", () => togglePlaybookAddForm(false));
+    $("#kbPlaybookAddForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      addPlaybookEntry();
+    });
+
+    function renderTicketPins() {
+      const host = $("#kbTicketPinsList");
+      if (!host) return;
+      const note = $("#kbTicketPinsNote");
+      const list = kbTicketPins || [];
+      if (note) note.textContent = list.length ? `${list.length} pinned ticket${list.length === 1 ? "" : "s"}` : "No pinned tickets yet.";
+      if (!list.length) {
+        host.innerHTML = '<div class="kb-empty">Pin a ticket from the test results to force Hannah to use it for a question.</div>';
+        return;
+      }
+      host.innerHTML = list.map((p) => {
+        const label = p.ticket_id ? `Ticket #${escapeHtml(p.ticket_id)}` : escapeHtml(p.title || p.ticket_doc_id || "Ticket");
+        const link = p.ticket_url ? `<a href="${escapeHtml(p.ticket_url)}" target="_blank" rel="noopener">Open in HubSpot</a>` : "";
+        return `
+        <div class="kb-pin-entry">
+          <div class="kb-pin-entry__main">
+            <div class="kb-pin-entry__topic">${escapeHtml(p.topic || "")}</div>
+            <div class="kb-pin-entry__ticket">${label}${p.title ? ` · ${escapeHtml(p.title)}` : ""}</div>
+          </div>
+          <div class="kb-pin-entry__actions">
+            ${link}
+            <button type="button" class="btn btn--sm kb-fb-btn" data-unpin-id="${escapeHtml(p.id)}">Remove</button>
+          </div>
+        </div>`;
+      }).join("");
+    }
 
     async function runSlackSync(fullBackfill) {
       const resultEl = $("#slackSyncResult");
@@ -822,6 +3128,48 @@
     }
 
     $("#btnHubspotKbSync").addEventListener("click", () => runHubspotKbSync());
+
+    async function runHubspotTicketsSync(fullBackfill = false) {
+      const resultEl = $("#hubspotTicketsSyncResult");
+      resultEl.hidden = false;
+      resultEl.textContent = fullBackfill ? "Starting full backfill of HubSpot Resolved Tickets…" : "Starting HubSpot Resolved Tickets sync…";
+      // Show an immediate "starting" progress bar so the user isn't left in the dark.
+      renderTicketsProgress({ running: true, progress: { phase: "discovering", full_backfill: fullBackfill, message: "Starting…" } });
+      try {
+        const data = await api("/knowledge/hubspot-tickets/sync", {
+          method: "POST",
+          body: JSON.stringify({ full_backfill: fullBackfill, background: true })
+        });
+        if (data.ok && data.started) {
+          resultEl.textContent = data.message || "Ticket sync started — tracking progress below.";
+          showToast("Ticket sync started");
+          startTicketsPolling();
+        } else if (data.ok && data.running) {
+          // A sync/backfill is already running on the persistent host — attach to it, don't restart.
+          resultEl.textContent = data.message || "A sync is already running — tracking its progress.";
+          showToast("Sync already running");
+          if (data.status) renderTicketsProgress(data.status);
+          startTicketsPolling();
+        } else if (data.ok) {
+          $("#hubspotTicketsProgress").hidden = true;
+          resultEl.textContent = `Wrote ${data.tickets_written || 0} tickets (${data.tickets_discovered || 0} candidate tickets found).`;
+          showToast("HubSpot tickets synced");
+          await refreshOverview();
+          await refreshKnowledge();
+        } else {
+          $("#hubspotTicketsProgress").hidden = true;
+          resultEl.textContent = data.error || JSON.stringify(data);
+          showToast("HubSpot tickets sync failed");
+        }
+      } catch (err) {
+        $("#hubspotTicketsProgress").hidden = true;
+        resultEl.textContent = err.message;
+        showToast("HubSpot tickets sync failed");
+      }
+    }
+
+    $("#btnHubspotTicketsSync").addEventListener("click", () => runHubspotTicketsSync(false));
+    $("#btnHubspotTicketsBackfill").addEventListener("click", () => runHubspotTicketsSync(true));
 
     $("#btnSaveSettings").addEventListener("click", async () => {
       try {

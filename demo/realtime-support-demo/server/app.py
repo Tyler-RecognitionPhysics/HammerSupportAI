@@ -22,6 +22,7 @@ def _load_local_dotenv() -> None:
 _load_local_dotenv()
 
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -57,8 +58,16 @@ if str(_SHARED_DIR) not in sys.path:
 from site_copy import load_site_copy  # noqa: E402
 
 DEFAULT_WIKI_DIR = REPO_ROOT / "wiki-support"
-DEFAULT_KB_DB = REPO_ROOT / "knowledge_support" / "data" / "support_kb.sqlite"
 DEFAULT_RAW_DIR = REPO_ROOT / "raw" / "support-data"
+
+
+def _default_kb_db() -> Path:
+    override = os.environ.get("SUPPORT_KB_DB", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    if _is_production():
+        return Path("/tmp/realtime-support-demo/support_kb.sqlite")
+    return REPO_ROOT / "knowledge_support" / "data" / "support_kb.sqlite"
 
 
 def _support_raw_dir() -> Path | None:
@@ -71,18 +80,23 @@ def _support_raw_dir() -> Path | None:
 
 @lru_cache(maxsize=1)
 def get_retriever():
+    from kb_source_control import wrap_retriever
     from wiki_retrieval import SupportWikiRetriever
 
     wiki_dir = Path(os.environ.get("SUPPORT_WIKI_DIR", str(DEFAULT_WIKI_DIR))).resolve()
-    db = Path(os.environ.get("SUPPORT_KB_DB", str(DEFAULT_KB_DB))).resolve()
+    db = _default_kb_db()
     pb_env = os.environ.get("SUPPORT_PLAYBOOK_MD", "").strip()
     playbook = Path(pb_env).expanduser().resolve() if pb_env else None
-    return SupportWikiRetriever(
+    from support_ticket_pins import pins_path
+
+    inner = SupportWikiRetriever(
         wiki_dir,
         support_raw_dir=_support_raw_dir(),
         db_path=db,
         playbook_md_path=playbook,
+        ticket_pins_path=pins_path(REPO_ROOT),
     )
+    return wrap_retriever(inner)
 
 
 def invalidate_support_retriever_cache() -> None:
@@ -93,6 +107,24 @@ def invalidate_support_retriever_cache() -> None:
         invalidate_executor_wiki()
     except Exception:
         pass
+
+
+def warm_support_retriever_in_background() -> None:
+    """Rebuild the retriever index off the request thread.
+
+    Playbook edits only need to write a small file; rebuilding the BM25 corpus
+    is the slow part, so we do it asynchronously and let callers return
+    immediately. The next /knowledge/ask will use the warmed index (or lazily
+    rebuild if this hasn't finished yet)."""
+    import threading
+
+    def _warm() -> None:
+        try:
+            get_retriever()
+        except Exception:
+            logging.getLogger("support").exception("background retriever warm failed")
+
+    threading.Thread(target=_warm, name="retriever-warm", daemon=True).start()
 
 
 @lru_cache(maxsize=1)
@@ -114,18 +146,66 @@ def _is_production() -> bool:
     return os.environ.get("SUPPORT_SERVERLESS", "").strip().lower() in ("1", "true", "yes")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _startup_warmup() -> None:
     from knowledge_support.kb_bootstrap import ensure_support_kb_database
 
-    ensure_support_kb_database(REPO_ROOT)
     try:
+        ensure_support_kb_database(REPO_ROOT, db_path=_default_kb_db())
         from support_dashboard_store import init_db
 
         init_db()
+        await asyncio.to_thread(get_retriever)
     except Exception:
-        logging.getLogger(__name__).exception("dashboard init failed")
-    await asyncio.to_thread(get_retriever)
+        logging.getLogger(__name__).exception("support warmup failed")
+
+
+def _auto_sync_interval_hours() -> float:
+    """Hours between automatic HubSpot ticket syncs. 0/unset disables the scheduler."""
+    raw = os.environ.get("SUPPORT_AUTO_SYNC_INTERVAL_HOURS", "").strip()
+    if not raw:
+        return 0.0
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 0.0
+
+
+async def _auto_sync_loop() -> None:
+    """Background loop that keeps the HubSpot ticket index current on the persistent host."""
+    interval_hours = _auto_sync_interval_hours()
+    if interval_hours <= 0:
+        return
+
+    log = logging.getLogger(__name__)
+    interval_seconds = interval_hours * 3600.0
+    # Let warmup finish and the machine settle before the first run.
+    await asyncio.sleep(float(os.environ.get("SUPPORT_AUTO_SYNC_START_DELAY_SECONDS", "120")))
+
+    while True:
+        try:
+            from hubspot_tickets_sync import start_hubspot_tickets_sync_background
+
+            result = await start_hubspot_tickets_sync_background(full_backfill=False)
+            if result.get("started"):
+                log.info("Auto-sync: HubSpot ticket sync started (interval %.1fh)", interval_hours)
+            else:
+                log.info("Auto-sync: skipped (%s)", result.get("message", "already running"))
+        except Exception:
+            log.exception("Auto-sync: HubSpot ticket sync failed")
+
+        await asyncio.sleep(interval_seconds)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # On Vercel, do not block requests while the KB index builds (ElevenLabs times out).
+    if _is_production():
+        asyncio.create_task(_startup_warmup())
+    else:
+        await _startup_warmup()
+    # Persistent sync host only: keep the ticket index fresh on a schedule.
+    if not _is_production() and _auto_sync_interval_hours() > 0:
+        asyncio.create_task(_auto_sync_loop())
     yield
 
 
@@ -146,6 +226,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(default_factory=list)
+    session_id: str | None = None
 
 
 class SupportTicketRequest(BaseModel):
@@ -153,7 +234,13 @@ class SupportTicketRequest(BaseModel):
     email: str = Field(..., min_length=3, max_length=200)
     phone: str = Field(..., min_length=7, max_length=32)
     message: str = Field(..., min_length=1, max_length=4000)
+    first_name: str = Field(default="", max_length=80)
+    last_name: str = Field(default="", max_length=80)
     contact_name: str = Field(default="", max_length=120)
+    session_id: str = Field(default="", max_length=120)
+    channel: str = Field(default="api", max_length=32)
+    resolved: bool = False
+    issue_category: str = Field(default="", max_length=64)
 
 
 class PlaybookEntryRequest(BaseModel):
@@ -172,6 +259,9 @@ class SlackSyncRequest(BaseModel):
 
 @app.get("/api/health")
 def health() -> dict:
+    from hubspot_ticket_create import hubspot_ticket_create_configured
+    from support_ticket_slack import slack_ticket_notify_configured
+
     return {
         "ok": True,
         "service": "hammer-support-ai",
@@ -180,6 +270,8 @@ def health() -> dict:
             os.environ.get("ELEVENLABS_API_KEY", "").strip()
             and os.environ.get("ELEVENLABS_AGENT_ID", "").strip()
         ),
+        "hubspot_ticket_create_configured": hubspot_ticket_create_configured(),
+        "slack_ticket_notify_configured": slack_ticket_notify_configured(),
     }
 
 
@@ -213,16 +305,57 @@ async def elevenlabs_llm(request: Request) -> object:
     return await handle_elevenlabs_llm(body, get_retriever)
 
 
+@app.post("/api/elevenlabs/call-end")
+async def elevenlabs_call_end(request: Request) -> dict:
+    from support_elevenlabs_call_end import handle_support_elevenlabs_call_end
+
+    raw = await request.body()
+    sig = request.headers.get("ElevenLabs-Signature") or request.headers.get("elevenlabs-signature")
+    try:
+        event = json.loads(raw.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, "Invalid JSON body") from exc
+    return await handle_support_elevenlabs_call_end(raw, sig, event)
+
+
 @app.post("/api/chat")
 async def chat(body: ChatRequest) -> dict:
+    import uuid
     from support_chat import complete_support_chat
+    from support_dashboard_store import register_session_start, persist_session
+    from support_tools import SupportSession
+
+    session_id = body.session_id or f"chat-{uuid.uuid4().hex[:12]}"
+
+    try:
+        register_session_start(session_id, channel="chat")
+    except Exception:
+        pass
 
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
+
+    session = SupportSession(call_id=session_id, channel="chat")
+
+    from support_dashboard_store import hydrate_support_session
+
     try:
-        reply = await complete_support_chat(get_tool_executor(), get_retriever(), messages)
+        hydrate_support_session(session, session_id)
+    except Exception:
+        pass
+
+    try:
+        reply = await complete_support_chat(get_tool_executor(), get_retriever(), messages, session=session)
+        persist_session(session, messages, agent_reply=reply)
     except Exception as exc:
         raise HTTPException(503, str(exc)) from exc
-    return {"reply": reply}
+    return {
+        "reply": reply,
+        "session_id": session_id,
+        "ticket_created": bool(getattr(session, "ticket_created", False)),
+        "resolved": bool(getattr(session, "resolved", False)),
+        "escalated": bool(getattr(session, "escalated", False)),
+        "hubspot_ticket_id": str(getattr(session, "hubspot_ticket_id", "") or ""),
+    }
 
 
 @app.post("/api/voice/browser-call-start")
@@ -238,14 +371,21 @@ async def browser_call_start(request: Request) -> dict:
 
 @app.post("/api/support/ticket")
 async def support_ticket(body: SupportTicketRequest) -> dict:
-    from support_dashboard_store import create_support_ticket
+    from support_ticket_service import create_and_notify_ticket
 
-    return create_support_ticket(
-        dealership=body.dealership,
-        email=body.email,
-        phone=body.phone,
-        message=body.message,
-        contact_name=body.contact_name,
+    return await create_and_notify_ticket(
+        {
+            "dealership_name": body.dealership,
+            "first_name": body.first_name,
+            "last_name": body.last_name,
+            "email": body.email,
+            "phone": body.phone,
+            "issue_summary": body.message,
+            "session_id": body.session_id,
+            "channel": body.channel,
+            "resolved": body.resolved,
+            "issue_category": body.issue_category,
+        }
     )
 
 
@@ -308,6 +448,161 @@ def admin_call_detail(request: Request, call_id: str) -> dict:
     return dashboard_call_detail(call_id)
 
 
+@app.get("/api/admin/support/tickets")
+def admin_tickets(request: Request, limit: int = Query(50, ge=1, le=200)) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_tickets
+
+    return dashboard_tickets(limit=limit)
+
+
+@app.get("/api/admin/support/appointments")
+def admin_appointments(
+    request: Request,
+    start: str = Query(""),
+    end: str = Query(""),
+    status: str = Query(""),
+    limit: int = Query(500, ge=1, le=2000),
+) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_appointments
+
+    return dashboard_appointments(start=start, end=end, status=status, limit=limit)
+
+
+@app.post("/api/admin/support/appointments")
+async def admin_appointment_create(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import AppointmentCreate, dashboard_appointment_create
+
+    body = AppointmentCreate(**(await request.json()))
+    return dashboard_appointment_create(body)
+
+
+@app.patch("/api/admin/support/appointments/{appointment_id}")
+async def admin_appointment_update(request: Request, appointment_id: int) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import AppointmentUpdate, dashboard_appointment_update
+
+    body = AppointmentUpdate(**(await request.json()))
+    return dashboard_appointment_update(appointment_id, body)
+
+
+@app.delete("/api/admin/support/appointments/{appointment_id}")
+def admin_appointment_delete(request: Request, appointment_id: int) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_appointment_delete
+
+    return dashboard_appointment_delete(appointment_id)
+
+
+@app.get("/api/admin/support/cs-questions")
+def admin_cs_questions(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_cs_questions
+
+    return dashboard_cs_questions()
+
+
+@app.get("/api/admin/support/cs-questions/status")
+def admin_cs_questions_status(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_cs_questions_status
+
+    return dashboard_cs_questions_status()
+
+
+@app.post("/api/admin/support/cs-questions/rebuild")
+def admin_cs_questions_rebuild(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_cs_questions_rebuild
+
+    return dashboard_cs_questions_rebuild()
+
+
+@app.get("/api/admin/support/qa")
+def admin_qa(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_qa
+
+    board = dashboard_qa()
+    # Pre-fill answer boxes with AI drafts so the reviewer only edits/approves.
+    # No-ops when nothing needs drafting or a run is already in progress.
+    if board.get("built"):
+        try:
+            from support_qa import autostart_qa_drafts, qa_generation_status
+
+            autostart_qa_drafts(get_retriever, get_tool_executor)
+            board["generation"] = qa_generation_status()
+        except Exception:
+            logging.getLogger("support").exception("qa autodraft failed")
+    return board
+
+
+@app.post("/api/admin/support/qa/answer")
+async def admin_qa_save(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import QaAnswerSave, dashboard_qa_save
+
+    body = QaAnswerSave(**(await request.json()))
+    return dashboard_qa_save(body)
+
+
+@app.post("/api/admin/support/qa/generate")
+async def admin_qa_generate(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import QaGenerateRequest, dashboard_qa_generate
+
+    body = QaGenerateRequest(**(await request.json() if await request.body() else {}))
+    return dashboard_qa_generate(body, get_retriever, get_tool_executor)
+
+
+@app.get("/api/admin/support/qa/generate/status")
+def admin_qa_generate_status(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_qa_generate_status
+
+    return dashboard_qa_generate_status()
+
+
+@app.post("/api/admin/support/qa/generate/cancel")
+def admin_qa_generate_cancel(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_qa_generate_cancel
+
+    return dashboard_qa_generate_cancel()
+
+
+@app.post("/api/admin/support/qa/regenerate")
+async def admin_qa_regenerate(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import QaAnswerSave, dashboard_qa_regenerate
+
+    body = QaAnswerSave(**(await request.json()))
+    try:
+        await asyncio.to_thread(get_retriever)
+        return await dashboard_qa_regenerate(body, get_retriever(), get_tool_executor())
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/api/admin/support/qa/approve-all")
+def admin_qa_approve_all(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_qa_approve_all
+
+    return dashboard_qa_approve_all()
+
+
+@app.post("/api/admin/support/qa/discard")
+async def admin_qa_discard(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import QaDiscardRequest, dashboard_qa_discard
+
+    body = QaDiscardRequest(**(await request.json()))
+    return dashboard_qa_discard(body)
+
+
 @app.get("/api/admin/support/settings")
 def admin_settings_get(request: Request) -> dict:
     require_admin_auth(request)
@@ -341,12 +636,56 @@ def admin_knowledge_stats(request: Request) -> dict:
     return knowledge_stats(get_retriever(), REPO_ROOT)
 
 
+@app.get("/api/admin/support/knowledge/sources")
+def admin_knowledge_sources(request: Request) -> dict:
+    require_admin_auth(request)
+    from kb_source_control import knowledge_sources_state
+
+    return knowledge_sources_state()
+
+
+@app.patch("/api/admin/support/knowledge/sources")
+async def admin_knowledge_sources_patch(request: Request) -> dict:
+    require_admin_auth(request)
+    from kb_source_control import knowledge_sources_state, set_kb_enabled_sources
+
+    body = await request.json()
+    patch = body.get("enabled") if isinstance(body, dict) else None
+    if not isinstance(patch, dict):
+        patch = body if isinstance(body, dict) else {}
+    enabled = set_kb_enabled_sources({str(k): bool(v) for k, v in patch.items()})
+    return {"ok": True, "enabled": enabled, **knowledge_sources_state()}
+
+
 @app.get("/api/admin/support/knowledge/docs")
-def admin_knowledge_docs(request: Request) -> dict:
+def admin_knowledge_docs(
+    request: Request,
+    ticket_offset: int = Query(0, ge=0),
+    ticket_limit: int = Query(200, ge=0, le=500),
+    tickets_only: bool = Query(False),
+) -> dict:
     require_admin_auth(request)
     from support_knowledge_api import list_knowledge_docs
 
-    return list_knowledge_docs(get_retriever())
+    return list_knowledge_docs(
+        get_retriever(),
+        ticket_offset=ticket_offset,
+        ticket_limit=ticket_limit,
+        tickets_only=tickets_only,
+    )
+
+
+@app.get("/api/admin/support/knowledge/email-tickets")
+def admin_knowledge_email_tickets(
+    request: Request,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=300),
+    q: str = Query(""),
+) -> dict:
+    require_admin_auth(request)
+    from support_knowledge_api import list_email_worked_tickets
+
+    return list_email_worked_tickets(get_retriever(), offset=offset, limit=limit, q=q)
 
 
 @app.get("/api/admin/support/knowledge/doc")
@@ -365,6 +704,51 @@ def admin_knowledge_search(request: Request, q: str = Query(""), k: int = Query(
     return search_knowledge(get_retriever(), q, k=k)
 
 
+@app.post("/api/admin/support/knowledge/ask")
+async def admin_knowledge_ask(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_knowledge_api import ask_knowledge
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    question = str(body.get("q") or body.get("query") or "").strip()
+    if not question:
+        raise HTTPException(400, "Question required.")
+    try:
+        await asyncio.to_thread(get_retriever)
+        return await ask_knowledge(get_retriever(), get_tool_executor(), question)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@app.post("/api/admin/support/knowledge/ask/regenerate")
+async def admin_knowledge_ask_regenerate(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_knowledge_api import regenerate_knowledge
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    question = str(body.get("q") or body.get("query") or "").strip()
+    correct_info = str(body.get("correct_info") or body.get("content") or "").strip()
+    if not question:
+        raise HTTPException(400, "Question required.")
+    if not correct_info:
+        raise HTTPException(400, "Correct information required.")
+    try:
+        await asyncio.to_thread(get_retriever)
+        return await regenerate_knowledge(get_retriever(), question, correct_info)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
 @app.get("/api/admin/support/knowledge/playbook")
 def admin_playbook_get(request: Request) -> dict:
     require_admin_auth(request)
@@ -381,8 +765,29 @@ async def admin_playbook_append(request: Request) -> dict:
     body = PlaybookEntryRequest(**(await request.json()))
     result = append_playbook_entry(REPO_ROOT, body.title, body.content)
     if result.get("ok"):
-        invalidate_support_retriever_cache()
-        get_retriever()
+        # Keep this request fast: never rebuild the whole BM25 corpus on the
+        # request thread. If the retriever is already warm we index the new
+        # entry in place (~50ms). If it is cold (cache cleared by another
+        # action), we just rebuild lazily off-thread — the entry is already on
+        # disk, so the background warm / next ask will pick it up.
+        indexed = False
+        if get_retriever.cache_info().currsize:
+            try:
+                adder = getattr(get_retriever(), "add_playbook_entry_to_index", None)
+                if callable(adder):
+                    indexed = bool(adder(body.title, body.content))
+            except Exception:
+                indexed = False
+        # Drop the agent's cached wiki context so the new answer is used next ask.
+        try:
+            from support_agent import invalidate_executor_wiki
+
+            invalidate_executor_wiki()
+        except Exception:
+            pass
+        if not indexed:
+            get_retriever.cache_clear()
+            warm_support_retriever_in_background()
     return result
 
 
@@ -394,7 +799,49 @@ def admin_playbook_delete(request: Request, entry_id: str) -> dict:
     result = delete_playbook_entry(REPO_ROOT, entry_id)
     if result.get("ok"):
         invalidate_support_retriever_cache()
-        get_retriever()
+        warm_support_retriever_in_background()
+    return result
+
+
+@app.get("/api/admin/support/knowledge/ticket-pins")
+def admin_ticket_pins_get(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_knowledge_api import list_ticket_pins
+
+    return list_ticket_pins(REPO_ROOT)
+
+
+@app.post("/api/admin/support/knowledge/ticket-pins")
+async def admin_ticket_pins_add(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_knowledge_api import add_ticket_pin
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    topic = str(body.get("topic") or body.get("q") or "").strip()
+    doc_id = str(body.get("doc_id") or body.get("ticket_doc_id") or "").strip()
+    if not topic:
+        raise HTTPException(400, "A question/topic is required.")
+    if not doc_id:
+        raise HTTPException(400, "A ticket is required.")
+    result = add_ticket_pin(get_retriever(), REPO_ROOT, topic, doc_id)
+    if result.get("ok"):
+        invalidate_support_retriever_cache()
+        warm_support_retriever_in_background()
+    return result
+
+
+@app.delete("/api/admin/support/knowledge/ticket-pins/{pin_id}")
+def admin_ticket_pins_delete(request: Request, pin_id: str) -> dict:
+    require_admin_auth(request)
+    from support_knowledge_api import delete_ticket_pin
+
+    result = delete_ticket_pin(REPO_ROOT, pin_id)
+    if result.get("ok"):
+        invalidate_support_retriever_cache()
+        warm_support_retriever_in_background()
     return result
 
 
@@ -455,6 +902,78 @@ def admin_hubspot_kb_status(request: Request) -> dict:
     from hubspot_kb_sync import hubspot_kb_sync_status
 
     return hubspot_kb_sync_status()
+
+
+@app.post("/api/admin/support/knowledge/hubspot-tickets/sync")
+async def admin_hubspot_tickets_sync(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_kb_artifact_api import run_hubspot_tickets_sync_handler
+
+    full_backfill = False
+    background = True
+    try:
+        body = await request.json()
+        full_backfill = bool(body.get("full_backfill"))
+        background = bool(body.get("background", True))
+    except Exception:
+        pass
+
+    try:
+        return await run_hubspot_tickets_sync_handler(
+            request,
+            full_backfill=full_backfill,
+            background=background,
+            is_production=_is_production,
+            invalidate_cache=invalidate_support_retriever_cache,
+            warm_retriever=get_retriever,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@app.get("/api/knowledge/artifact/manifest.json")
+def admin_knowledge_artifact_manifest(request: Request):
+    from support_kb_artifact_api import knowledge_artifact_manifest
+
+    return knowledge_artifact_manifest(request)
+
+
+@app.get("/api/knowledge/artifact/support_kb.sqlite")
+def admin_knowledge_artifact_sqlite(request: Request):
+    from support_kb_artifact_api import knowledge_artifact_sqlite
+
+    return knowledge_artifact_sqlite(request)
+
+
+@app.get("/api/knowledge/artifact/hubspot_tickets_sync.sqlite")
+def admin_knowledge_artifact_tickets_state(request: Request):
+    from support_kb_artifact_api import knowledge_artifact_tickets_state
+
+    return knowledge_artifact_tickets_state(request)
+
+
+@app.get("/api/admin/support/knowledge/hubspot-tickets/status")
+def admin_hubspot_tickets_status(request: Request) -> dict:
+    require_admin_auth(request)
+    from hubspot_tickets_sync import hubspot_tickets_sync_status
+
+    return hubspot_tickets_sync_status()
+
+
+@app.post("/api/admin/support/knowledge/reload")
+def admin_knowledge_reload(request: Request) -> dict:
+    require_admin_auth(request)
+    from knowledge_support.kb_bootstrap import ensure_support_kb_database
+
+    try:
+        ensure_support_kb_database(REPO_ROOT, db_path=_default_kb_db(), force=_is_production())
+        invalidate_support_retriever_cache()
+        get_retriever()
+        return {"ok": True}
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
 
 
 if not _is_production():

@@ -35,10 +35,16 @@ def _slack_channel_id() -> str:
     return os.environ.get("SLACK_SUPPORT_CHANNEL_ID", "").strip()
 
 
+def _is_serverless() -> bool:
+    return os.environ.get("SUPPORT_SERVERLESS", "").strip().lower() in ("1", "true", "yes")
+
+
 def _state_db_path() -> Path:
     override = os.environ.get("SUPPORT_SLACK_STATE_DB", "").strip()
     if override:
         return Path(override).expanduser().resolve()
+    if _is_serverless():
+        return Path("/tmp/realtime-support-demo/slack_sync.sqlite")
     return _repo_root() / "knowledge_support" / "data" / "slack_sync.sqlite"
 
 

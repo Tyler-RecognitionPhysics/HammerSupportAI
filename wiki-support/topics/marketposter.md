@@ -40,3 +40,9 @@ It is already available for the Feed Provider property.
 You can get them from live accounts actively posting.
 
 <!-- slack:1740430667.971019 -->
+
+### Would it be helpful if I tried reaching out to him?
+
+That would be. We didn’t get through any of the steps so I think he still needs to do the whole WT of installing the extension, adding the key etc.
+
+<!-- slack:1780335235.924499 -->
