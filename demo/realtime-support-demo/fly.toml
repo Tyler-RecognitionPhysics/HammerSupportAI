@@ -10,7 +10,12 @@ primary_region = "iad"
   context = "../.."
 
 [env]
+  # The bundled developer .env must not override these machine paths.
+  SUPPORT_SKIP_DOTENV = "1"
   SUPPORT_REPO_ROOT = "/app"
+  # Live playbook lives on the volume so dashboard edits survive redeploys.
+  # Serverless (Vercel) instances pull this file so voice + chat ground on it.
+  SUPPORT_PLAYBOOK_MD = "/data/playbook/approved.md"
   SUPPORT_DATA_DIR = "/data"
   SUPPORT_RAW_DIR = "/data/raw/support-data"
   SUPPORT_KB_DB = "/data/support_kb.sqlite"

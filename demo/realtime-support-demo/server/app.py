@@ -12,6 +12,11 @@ _SERVER_DIR = Path(__file__).resolve().parent
 def _load_local_dotenv() -> None:
     if os.environ.get("SUPPORT_SERVERLESS", "").strip().lower() in ("1", "true", "yes"):
         return
+    # The Docker image bundles the developer's .env; on Fly it must never
+    # override the machine env (it once pointed SUPPORT_REPO_ROOT at a Windows
+    # path, silently splitting the playbook into a junk file).
+    if os.environ.get("SUPPORT_SKIP_DOTENV", "").strip().lower() in ("1", "true", "yes"):
+        return
     try:
         from dotenv import load_dotenv
     except ImportError:
@@ -83,6 +88,15 @@ def get_retriever():
     from kb_source_control import wrap_retriever
     from wiki_retrieval import SupportWikiRetriever
 
+    # Serverless: ground on the persistent host's LIVE playbook (dashboard
+    # edits), not the file bundled at deploy time. Sets SUPPORT_PLAYBOOK_MD.
+    try:
+        from support_remote_dashboard import ensure_live_playbook
+
+        ensure_live_playbook()
+    except Exception:
+        logging.getLogger(__name__).exception("live playbook mirror failed; using bundled copy")
+
     wiki_dir = Path(os.environ.get("SUPPORT_WIKI_DIR", str(DEFAULT_WIKI_DIR))).resolve()
     db = _default_kb_db()
     pb_env = os.environ.get("SUPPORT_PLAYBOOK_MD", "").strip()
@@ -105,6 +119,22 @@ def invalidate_support_retriever_cache() -> None:
         from support_agent import invalidate_executor_wiki
 
         invalidate_executor_wiki()
+    except Exception:
+        pass
+
+
+def refresh_live_playbook() -> None:
+    """TTL-gated background check for playbook edits made in the dashboard;
+    rebuilds the retriever when the live playbook changed. Called at the start
+    of voice/chat turns — never blocks them."""
+    try:
+        from support_remote_dashboard import refresh_live_playbook_if_stale
+
+        def _on_changed() -> None:
+            invalidate_support_retriever_cache()
+            warm_support_retriever_in_background()
+
+        refresh_live_playbook_if_stale(_on_changed)
     except Exception:
         pass
 
@@ -381,6 +411,7 @@ async def elevenlabs_token() -> dict:
 async def elevenlabs_llm(request: Request) -> object:
     from support_agent import handle_elevenlabs_llm
 
+    refresh_live_playbook()
     body = await request.json()
     return await handle_elevenlabs_llm(body, get_retriever)
 
@@ -404,6 +435,8 @@ async def chat(body: ChatRequest) -> dict:
     from support_chat import complete_support_chat
     from support_dashboard_store import register_session_start, persist_session
     from support_tools import SupportSession
+
+    refresh_live_playbook()
 
     session_id = body.session_id or f"chat-{uuid.uuid4().hex[:12]}"
 

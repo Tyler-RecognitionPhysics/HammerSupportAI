@@ -2,9 +2,23 @@
 
 Approved support answers promoted from live sessions or admin edits.
 
-### Password reset not received
+### How do I reset my password
 
-Ask the customer to check spam and confirm the email on file matches their login. If still blocked, do not tell them to email anyone — collect their dealership name, their name, and the email on their Hammer account, then create a support ticket so a Hammer rep can reset it for them.
+To reset your Hammer password:
+
+1. Go to the password reset page: https://www2.hammer-corp.com/password_reset/new
+2. Enter the email on your Hammer account.
+3. Check your email for the reset link and follow the steps.
+
+If the reset email doesn't arrive, check your spam folder and make sure the email matches the one on file for your login. If the customer still can't get in, do not tell them to email anyone — collect their dealership name, their name, and the email on their Hammer account, then create a support ticket so a Hammer rep can reset it for them.
+
+### where can i go to log in to my account
+
+You can log in to your Hammer account at **https://www2.hammer-corp.com/session/new**. If you need any further assistance, feel free to ask!
+
+### how do i get my ai to stop saying certain words
+
+To stop your AI from using certain words, I can have a team member reach out to you for assistance. Please let me know if you'd like to proceed!
 
 ### working hours
 

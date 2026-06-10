@@ -16,9 +16,12 @@ Set SUPPORT_REMOTE_DASHBOARD=0 to force fully local behavior.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import threading
+import time
+from pathlib import Path
 
 import httpx
 from fastapi import Request, Response
@@ -136,6 +139,92 @@ def push_store_op(op: str, data: dict, *, wait: bool = True) -> bool:
         return _send()
     threading.Thread(target=_send, daemon=True, name="store-sync").start()
     return True
+
+
+# --- Live playbook mirroring -------------------------------------------------
+# The playbook (admin-approved answers, the highest-authority grounding source)
+# lives on the persistent host. Serverless instances mirror it into /tmp and
+# point SUPPORT_PLAYBOOK_MD at the copy, so voice and chat always ground on the
+# same answers the dashboard shows — instead of a stale bundled file.
+
+_PLAYBOOK_TTL_SECONDS = 300.0
+_PLAYBOOK_TMP_PATH = Path("/tmp/realtime-support-demo/playbook/approved.md")
+_playbook_state: dict = {"checked_at": 0.0, "hash": None}
+_playbook_lock = threading.Lock()
+
+
+def _fetch_remote_playbook_md() -> str | None:
+    token = internal_token()
+    if not token:
+        return None
+    try:
+        resp = _get_client().get(
+            f"{sync_host_url()}/api/admin/support/knowledge/playbook",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=httpx.Timeout(15.0, connect=5.0),
+        )
+        if resp.status_code >= 400:
+            return None
+        entries = resp.json().get("entries") or []
+    except Exception:
+        _log.warning("live playbook fetch failed", exc_info=True)
+        return None
+    blocks = [
+        "# Hammer Support Playbook",
+        "Approved support answers promoted from live sessions or admin edits.",
+    ]
+    for e in entries:
+        heading = str(e.get("heading") or "").strip()
+        body = str(e.get("body") or "").strip()
+        if heading:
+            blocks.append(f"{heading}\n\n{body}".strip())
+    return "\n\n".join(blocks).strip() + "\n"
+
+
+def ensure_live_playbook() -> bool:
+    """Mirror the persistent host's playbook into /tmp (serverless only).
+
+    Returns True when an ALREADY-MIRRORED copy changed (callers should rebuild
+    the retriever); the first successful mirror returns False because it runs
+    before the retriever is built. Failures leave SUPPORT_PLAYBOOK_MD untouched
+    so the bundled file remains the fallback.
+    """
+    if not remote_dashboard_enabled():
+        return False
+    md = _fetch_remote_playbook_md()
+    _playbook_state["checked_at"] = time.time()
+    if md is None:
+        return False
+    digest = hashlib.sha256(md.encode("utf-8")).hexdigest()
+    with _playbook_lock:
+        if _playbook_state["hash"] == digest:
+            return False
+        _PLAYBOOK_TMP_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _PLAYBOOK_TMP_PATH.write_text(md, encoding="utf-8")
+        os.environ["SUPPORT_PLAYBOOK_MD"] = str(_PLAYBOOK_TMP_PATH)
+        changed = _playbook_state["hash"] is not None
+        _playbook_state["hash"] = digest
+    _log.info("live playbook mirrored (%d chars, changed=%s)", len(md), changed)
+    return changed
+
+
+def refresh_live_playbook_if_stale(on_changed) -> None:
+    """Background TTL check so dashboard playbook edits reach warm voice/chat
+    instances within a few minutes. Never blocks the calling turn."""
+    if not remote_dashboard_enabled():
+        return
+    if time.time() - float(_playbook_state.get("checked_at") or 0) < _PLAYBOOK_TTL_SECONDS:
+        return
+    _playbook_state["checked_at"] = time.time()  # claim the slot
+
+    def _run() -> None:
+        try:
+            if ensure_live_playbook():
+                on_changed()
+        except Exception:
+            _log.warning("live playbook refresh failed", exc_info=True)
+
+    threading.Thread(target=_run, daemon=True, name="playbook-refresh").start()
 
 
 def fetch_remote_settings() -> dict | None:
