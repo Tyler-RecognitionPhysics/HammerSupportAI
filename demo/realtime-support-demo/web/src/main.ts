@@ -144,11 +144,13 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// Escape plain text, then turn URLs and email addresses into clickable links.
-// Matched tokens are escaped for safe use in href attributes; non-link text is
-// escaped as usual, so this stays XSS-safe.
+// Escape plain text, then turn links into clickable anchors. Handles
+// markdown-style links the model emits ("[Password Reset](https://…)"),
+// bare URLs, www. links, and email addresses. Matched tokens are escaped for
+// safe use in href attributes; non-link text is escaped as usual, so this
+// stays XSS-safe.
 const LINKIFY_RE =
-  /(https?:\/\/[^\s<>"]+)|(\bwww\.[^\s<>"]+)|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+  /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"]+)|(\bwww\.[^\s<>"]+)|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
 
 function linkify(raw: string): string {
   let out = "";
@@ -158,7 +160,10 @@ function linkify(raw: string): string {
   while ((m = LINKIFY_RE.exec(raw)) !== null) {
     out += escapeHtml(raw.slice(last, m.index));
     const token = m[0];
-    if (m[3]) {
+    if (m[2]) {
+      // Markdown link: show the label, link to the URL.
+      out += `<a href="${escapeHtml(m[2])}" target="_blank" rel="noopener noreferrer">${escapeHtml(m[1])}</a>`;
+    } else if (m[5]) {
       const email = escapeHtml(token);
       out += `<a href="mailto:${email}">${email}</a>`;
     } else {
@@ -166,7 +171,7 @@ function linkify(raw: string): string {
       const trimmed = token.replace(/[.,;:!?)\]'"]+$/, "");
       const trailing = token.slice(trimmed.length);
       const safe = escapeHtml(trimmed);
-      const href = m[2] ? `https://${safe}` : safe;
+      const href = m[4] ? `https://${safe}` : safe;
       out += `<a href="${href}" target="_blank" rel="noopener noreferrer">${safe}</a>`;
       out += escapeHtml(trailing);
     }
@@ -386,7 +391,7 @@ function renderTranscript(): string {
       const roleClass = t.role === "user" ? "transcript__line--user" : "transcript__line--agent";
       const latestClass = i === lastIndex ? " transcript__line--latest" : "";
       const label = t.role === "user" ? "You" : "Hannah";
-      return `<div class="transcript__line ${roleClass}${latestClass}"><span class="transcript__role">${label}</span>${escapeHtml(t.text)}</div>`;
+      return `<div class="transcript__line ${roleClass}${latestClass}"><span class="transcript__role">${label}</span>${linkify(t.text)}</div>`;
     })
     .join("");
 }

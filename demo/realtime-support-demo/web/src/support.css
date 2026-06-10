@@ -813,6 +813,19 @@ body {
   border-left-color: var(--hc-accent);
 }
 
+/* Links Hannah mentions are blue and tappable straight from the transcript. */
+.transcript__line a {
+  color: #1a73e8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.transcript__line a:hover {
+  text-decoration: none;
+}
+
 .transcript__role {
   display: block;
   font-size: 11px;
