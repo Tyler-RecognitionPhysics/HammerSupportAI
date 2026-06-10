@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -131,6 +132,17 @@ def init_db() -> None:
                     status TEXT NOT NULL DEFAULT 'approved',
                     source TEXT NOT NULL DEFAULT 'human',
                     sources_json TEXT NOT NULL DEFAULT '[]'
+                );
+                CREATE TABLE IF NOT EXISTS qa_dedup_cache (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    signature TEXT NOT NULL DEFAULT '',
+                    data_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL DEFAULT ''
+                );
+                INSERT OR IGNORE INTO qa_dedup_cache (id) VALUES (1);
+                CREATE TABLE IF NOT EXISTS billing_dismissed (
+                    item_key TEXT PRIMARY KEY,
+                    dismissed_at TEXT NOT NULL DEFAULT ''
                 );
                 """
             )
@@ -262,6 +274,17 @@ def persist_session(session: SupportSession, messages: list[dict], *, agent_repl
     now = _utc_now()
     with _db_lock:
         with _connect() as conn:
+            # Ensure the row exists first — voice turns may persist under an id that
+            # was never pre-registered, and an UPDATE alone would silently drop the
+            # transcript (leaving the session blank in the dashboard).
+            conn.execute(
+                """
+                INSERT INTO sessions (call_id, channel, started_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(call_id) DO NOTHING
+                """,
+                (session.call_id, getattr(session, "channel", "") or "browser_voice", now, now),
+            )
             conn.execute(
                 """
                 UPDATE sessions SET
@@ -311,13 +334,22 @@ def persist_session(session: SupportSession, messages: list[dict], *, agent_repl
         def _bg_summary():
             try:
                 summary = _generate_ai_summary(transcript)
-                if summary:
-                    with _db_lock:
-                        with _connect() as conn:
+                category = classify_session_category(
+                    _session_classify_text(summary, transcript)
+                ) or "other"
+                with _db_lock:
+                    with _connect() as conn:
+                        if summary:
                             conn.execute(
                                 "UPDATE sessions SET interaction_summary = ? WHERE call_id = ?",
-                                (summary, session.call_id)
+                                (summary, session.call_id),
                             )
+                        # Only set a category if a tool/agent didn't already assign one.
+                        conn.execute(
+                            "UPDATE sessions SET issue_category = ? "
+                            "WHERE call_id = ? AND (issue_category IS NULL OR TRIM(issue_category) = '')",
+                            (category, session.call_id),
+                        )
             except Exception:
                 pass
         threading.Thread(target=_bg_summary, daemon=True).start()
@@ -371,6 +403,134 @@ def _generate_ai_summary(transcript: list[dict]) -> str:
     return ""
 
 
+# Session category taxonomy — mirrors the HubSpot support-form categories exactly:
+# Help with logging in / AI responses / CRM-Lead Integrations / Facebook-TikTok
+# Advertising / Inventory / Sales-Demo / Billing / Cancellation Request / Other.
+# Ordered most-specific first so e.g. a cancellation isn't swallowed by a broader
+# bucket. Matching is word-boundary aware so "ads" never matches inside "le-ads".
+_CATEGORY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("cancellation", ("cancel", "cancellation", "cancelled", "close my account", "close the account",
+                      "terminate", "discontinue", "downgrade", "unsubscribe", "stop my service",
+                      "stop the service", "end my subscription", "not renew")),
+    ("billing", ("billing", "invoice", "invoices", "charge", "charged", "overcharged", "payment",
+                 "refund", "credit card", "debit card", "receipt", "dispute", "pricing")),
+    ("facebook-aia", ("facebook", "tiktok", "aia", "ad", "ads", "advertising", "advertise",
+                      "campaign", "meta", "ad account", "boost", "ad spend", "marketposter",
+                      "market poster", "marketplace")),
+    ("crm-leads", ("lead", "leads", "lead delivery", "lead source", "lead notification", "crm",
+                   "cargurus", "autotrader", "cars.com", "integration", "integrate", "api",
+                   "zapier", "webhook", "data feed", "vinsolutions", "dealersocket", "elead")),
+    ("ai-responses", ("ai response", "ai responses", "ai reply", "ai replied", "ai said",
+                      "ai message", "ai answer", "the ai", "chatbot", "auto reply", "auto-reply",
+                      "autorespond", "auto respond", "follow-up message", "follow up message")),
+    ("inventory", ("inventory", "vehicle", "vehicles", "vin", "listing", "listings", "stock",
+                   "units", "feed sync", "vehicle posting", "post listing", "photos not")),
+    ("sales-demo", ("demo", "sales call", "sales rep", "trial", "upgrade my plan",
+                    "new location", "add a store", "another dealership")),
+    ("login", ("log in", "login", "log-in", "sign in", "sign-in", "password", "locked out",
+               "reset my password", "2fa", "verification code")),
+)
+
+# Older sessions may carry keys from the previous taxonomy (or free-text labels
+# the agent wrote before keys were enforced) — normalize to the form categories.
+LEGACY_CATEGORY_ALIASES: dict[str, str] = {
+    "leads": "crm-leads",
+    "integrations": "crm-leads",
+    "crm": "crm-leads",
+    "marketposter": "facebook-aia",
+    "dashboard": "other",
+    "training": "other",
+    "account": "other",
+    "connect": "other",
+    "ai responses": "ai-responses",
+    "ai response": "ai-responses",
+    "help with logging in": "login",
+    "crm / lead integrations": "crm-leads",
+    "facebook / tiktok advertising": "facebook-aia",
+    "sales / demo": "sales-demo",
+    "cancellation request": "cancellation",
+}
+
+_CATEGORY_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = tuple(
+    (
+        category,
+        re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(k) for k in keywords) + r")(?![a-z0-9])"),
+    )
+    for category, keywords in _CATEGORY_KEYWORDS
+)
+
+
+def classify_session_category(text: str) -> str:
+    """Heuristic bucket for a session from its transcript/summary text.
+
+    Returns one of the taxonomy categories, "other" when there is text but nothing
+    matches, or "" when there is no usable text to classify.
+    """
+    low = str(text or "").lower()
+    if not low.strip():
+        return ""
+    for category, pattern in _CATEGORY_PATTERNS:
+        if pattern.search(low):
+            return category
+    return "other"
+
+
+def _session_classify_text(summary: str, transcript: list[dict]) -> str:
+    parts = [str(summary or "")]
+    for turn in transcript or []:
+        # Customer wording is the strongest signal, but include everything so a
+        # summary-only (no-transcript) session still classifies.
+        parts.append(str(turn.get("text") or ""))
+    return "\n".join(parts)
+
+
+def backfill_session_categories(*, limit: int = 200) -> int:
+    """Categorize any sessions still missing an issue_category (cheap, no LLM).
+
+    Sessions with content get a heuristic category; content-less sessions fall back
+    to 'other' so the dashboard never shows a blank 'Uncategorized' column. Also
+    migrates keys from the previous taxonomy to the HubSpot-form categories.
+    """
+    init_db()
+    updated = 0
+    with _db_lock:
+        with _connect() as conn:
+            for old_key, new_key in LEGACY_CATEGORY_ALIASES.items():
+                conn.execute(
+                    "UPDATE sessions SET issue_category = ? WHERE LOWER(TRIM(issue_category)) = ?",
+                    (new_key, old_key),
+                )
+                conn.execute(
+                    "UPDATE tickets SET issue_category = ? WHERE LOWER(TRIM(issue_category)) = ?",
+                    (new_key, old_key),
+                )
+            rows = conn.execute(
+                """
+                SELECT call_id, interaction_summary, transcript_json
+                FROM sessions
+                WHERE issue_category IS NULL OR TRIM(issue_category) = ''
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+            now = _utc_now()
+            for row in rows:
+                try:
+                    transcript = json.loads(row["transcript_json"] or "[]")
+                except Exception:
+                    transcript = []
+                text = _session_classify_text(row["interaction_summary"] or "", transcript)
+                category = classify_session_category(text) or "other"
+                conn.execute(
+                    "UPDATE sessions SET issue_category = ?, updated_at = ? "
+                    "WHERE call_id = ? AND (issue_category IS NULL OR TRIM(issue_category) = '')",
+                    (category, now, row["call_id"]),
+                )
+                updated += 1
+    return updated
+
+
 def list_active_sessions() -> list[dict[str, Any]]:
     return list(_active.values())
 
@@ -383,6 +543,20 @@ def list_sessions(*, limit: int = 100) -> list[dict[str, Any]]:
             (limit,),
         ).fetchall()
     return [_session_row_to_dict(row) for row in rows]
+
+
+def clear_all_sessions() -> int:
+    """Delete every stored session (and clear in-memory active sessions).
+
+    Returns the number of session rows removed. Tickets and appointments are kept.
+    """
+    init_db()
+    with _db_lock:
+        with _connect() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+            conn.execute("DELETE FROM sessions")
+        _active.clear()
+    return int(count or 0)
 
 
 def get_session(call_id: str) -> dict[str, Any] | None:
@@ -549,6 +723,30 @@ def get_ticket_for_session(session_id: str) -> dict[str, Any] | None:
     }
 
 
+def _ticket_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    from hubspot_ticket_create import hubspot_ticket_url
+
+    keys = row.keys()
+    hid = str(row["hubspot_ticket_id"]) if "hubspot_ticket_id" in keys else ""
+    return {
+        "id": row["id"],
+        "contact_name": row["contact_name"],
+        "first_name": row["first_name"] if "first_name" in keys else "",
+        "last_name": row["last_name"] if "last_name" in keys else "",
+        "dealership": row["dealership"],
+        "email": row["email"],
+        "phone": row["phone"],
+        "message": row["message"],
+        "created_at": row["created_at"],
+        "session_id": row["session_id"] if "session_id" in keys else "",
+        "channel": row["channel"] if "channel" in keys else "",
+        "resolved": bool(row["resolved"]) if "resolved" in keys else False,
+        "hubspot_ticket_id": hid,
+        "ticket_url": hubspot_ticket_url(hid) if hid else "",
+        "issue_category": row["issue_category"] if "issue_category" in keys else "",
+    }
+
+
 def list_support_tickets(*, limit: int = 50) -> list[dict[str, Any]]:
     init_db()
     with _connect() as conn:
@@ -556,32 +754,60 @@ def list_support_tickets(*, limit: int = 50) -> list[dict[str, Any]]:
             "SELECT * FROM tickets ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
-    from hubspot_ticket_create import hubspot_ticket_url
+    return [_ticket_row_to_dict(row) for row in rows]
 
-    out: list[dict[str, Any]] = []
-    for row in rows:
-        keys = row.keys()
-        hid = str(row["hubspot_ticket_id"]) if "hubspot_ticket_id" in keys else ""
-        out.append(
-            {
-                "id": row["id"],
-                "contact_name": row["contact_name"],
-                "first_name": row["first_name"] if "first_name" in keys else "",
-                "last_name": row["last_name"] if "last_name" in keys else "",
-                "dealership": row["dealership"],
-                "email": row["email"],
-                "phone": row["phone"],
-                "message": row["message"],
-                "created_at": row["created_at"],
-                "session_id": row["session_id"] if "session_id" in keys else "",
-                "channel": row["channel"] if "channel" in keys else "",
-                "resolved": bool(row["resolved"]) if "resolved" in keys else False,
-                "hubspot_ticket_id": hid,
-                "ticket_url": hubspot_ticket_url(hid) if hid else "",
-                "issue_category": row["issue_category"] if "issue_category" in keys else "",
-            }
-        )
-    return out
+
+def list_support_tickets_by_category(
+    categories: list[str],
+    *,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """Tickets whose issue_category matches one of the given categories (newest first)."""
+    init_db()
+    cats = [c.strip().lower() for c in categories if c and c.strip()]
+    if not cats:
+        return []
+    placeholders = ",".join("?" for _ in cats)
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT * FROM tickets
+            WHERE LOWER(TRIM(issue_category)) IN ({placeholders})
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (*cats, int(limit)),
+        ).fetchall()
+    return [_ticket_row_to_dict(row) for row in rows]
+
+
+def set_ticket_resolved(ticket_id: int, resolved: bool) -> dict[str, Any] | None:
+    """Mark a locally-stored support ticket resolved/open."""
+    init_db()
+    with _db_lock:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE tickets SET resolved = ? WHERE id = ?",
+                (int(bool(resolved)), int(ticket_id)),
+            )
+            row = conn.execute("SELECT * FROM tickets WHERE id = ?", (int(ticket_id),)).fetchone()
+    return _ticket_row_to_dict(row) if row else None
+
+
+def set_session_resolved(call_id: str, resolved: bool) -> dict[str, Any] | None:
+    """Mark a chat/voice session resolved/open (used by the billing safety-net cards)."""
+    init_db()
+    cid = str(call_id or "").strip()
+    if not cid:
+        return None
+    with _db_lock:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE sessions SET resolved = ?, updated_at = ? WHERE call_id = ?",
+                (int(bool(resolved)), _utc_now(), cid),
+            )
+            row = conn.execute("SELECT * FROM sessions WHERE call_id = ?", (cid,)).fetchone()
+    return _session_row_to_dict(row) if row else None
 
 
 def create_support_ticket(
@@ -1010,9 +1236,75 @@ def set_qa_answer(
     }
 
 
+def get_qa_dedup_cache() -> dict[str, Any] | None:
+    """Cached Q&A duplicate-scenario map keyed by a signature of the question set."""
+    init_db()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT signature, data_json FROM qa_dedup_cache WHERE id = 1"
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        data = json.loads(row["data_json"] or "{}")
+    except json.JSONDecodeError:
+        data = {}
+    return {"signature": row["signature"] or "", "map": data}
+
+
+def set_qa_dedup_cache(signature: str, mapping: dict[str, str]) -> None:
+    init_db()
+    now = _utc_now()
+    with _db_lock:
+        with _connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO qa_dedup_cache (id, signature, data_json, updated_at) VALUES (1, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  signature=excluded.signature,
+                  data_json=excluded.data_json,
+                  updated_at=excluded.updated_at
+                """,
+                (signature, json.dumps(mapping or {}), now),
+            )
+
+
 def delete_qa_answer(question_key: str) -> bool:
     init_db()
     with _db_lock:
         with _connect() as conn:
             cur = conn.execute("DELETE FROM qa_answers WHERE question_key = ?", (question_key.strip(),))
     return cur.rowcount > 0
+
+
+def dismiss_billing_item(item_key: str) -> bool:
+    """Hide a billing/cancellation card (ticket, session, or callback) from the list."""
+    key = str(item_key or "").strip()
+    if not key:
+        return False
+    init_db()
+    with _db_lock:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO billing_dismissed (item_key, dismissed_at) VALUES (?, ?)",
+                (key, _utc_now()),
+            )
+    return True
+
+
+def undismiss_billing_item(item_key: str) -> bool:
+    key = str(item_key or "").strip()
+    if not key:
+        return False
+    init_db()
+    with _db_lock:
+        with _connect() as conn:
+            cur = conn.execute("DELETE FROM billing_dismissed WHERE item_key = ?", (key,))
+    return cur.rowcount > 0
+
+
+def list_dismissed_billing_keys() -> set[str]:
+    init_db()
+    with _connect() as conn:
+        rows = conn.execute("SELECT item_key FROM billing_dismissed").fetchall()
+    return {str(r["item_key"]) for r in rows}

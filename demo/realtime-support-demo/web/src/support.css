@@ -221,15 +221,15 @@ body {
 .help-hero__eyebrow {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  padding: 0 0.9rem;
+  min-height: 22px;
+  padding: 0 0.6rem;
   border: 1px solid color-mix(in srgb, var(--hc-accent) 18%, var(--hc-line));
   border-radius: var(--hc-radius-pill);
   background: var(--hc-accent-soft);
   color: var(--hc-accent);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -663,6 +663,23 @@ body {
   color: var(--hc-ink);
 }
 
+.chat__msg a {
+  color: #1a73e8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.chat__msg a:hover {
+  text-decoration: none;
+}
+
+/* Keep links readable on the accent-colored user bubble. */
+.chat__msg--user a {
+  color: #fff;
+}
+
 .help-session__error {
   margin-top: 16px;
   font-size: 14px;
@@ -734,9 +751,41 @@ body {
 }
 
 .hero-glass__body {
-  padding: 1rem 1.25rem;
-  max-height: 280px;
+  position: relative;
+  padding: 0.9rem 1.25rem;
+  /* Bounded, self-scrolling transcript: the newest line is always pinned into
+     view (see auto-scroll in main.ts) without growing the page height. */
+  max-height: min(46vh, 360px);
+  min-height: 116px;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--hc-accent) 30%, var(--hc-line)) transparent;
+  /* Fade only the top edge so older turns hint at scrollback while the live
+     message stays fully crisp at the bottom. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+}
+
+.hero-glass__body::-webkit-scrollbar {
+  width: 9px;
+}
+
+.hero-glass__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.hero-glass__body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background: color-mix(in srgb, var(--hc-accent) 26%, var(--hc-line));
+  background-clip: padding-box;
+}
+
+.hero-glass__body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--hc-accent) 46%, var(--hc-line));
+  background-clip: padding-box;
 }
 
 .hero-glass__foot {
@@ -745,8 +794,23 @@ body {
 }
 
 .transcript__line {
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.55rem;
+  margin-inline: -0.65rem;
+  padding: 0.4rem 0.65rem;
   line-height: 1.45;
+  border-radius: 10px;
+  border-left: 2px solid transparent;
+  transition: background-color 0.22s ease, border-color 0.22s ease;
+}
+
+.transcript__line:last-child {
+  margin-bottom: 0;
+}
+
+/* Spotlight the most recent turn so the user instantly sees what is happening now. */
+.transcript__line--latest {
+  background: var(--hc-accent-soft);
+  border-left-color: var(--hc-accent);
 }
 
 .transcript__role {
@@ -757,6 +821,20 @@ body {
   text-transform: uppercase;
   color: var(--hc-muted);
   margin-bottom: 0.15rem;
+}
+
+.transcript__line--agent .transcript__role {
+  color: var(--hc-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-glass__body {
+    scroll-behavior: auto;
+  }
+
+  .transcript__line {
+    transition: none;
+  }
 }
 
 .muted {

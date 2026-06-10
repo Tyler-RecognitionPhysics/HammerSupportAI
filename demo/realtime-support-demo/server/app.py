@@ -440,6 +440,14 @@ def admin_calls(request: Request, limit: int = Query(100, ge=1, le=500)) -> dict
     return dashboard_calls(limit=limit)
 
 
+@app.delete("/api/admin/support/sessions")
+def admin_sessions_clear(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_clear_sessions
+
+    return dashboard_clear_sessions()
+
+
 @app.get("/api/admin/support/calls/{call_id}")
 def admin_call_detail(request: Request, call_id: str) -> dict:
     require_admin_auth(request)
@@ -454,6 +462,65 @@ def admin_tickets(request: Request, limit: int = Query(50, ge=1, le=200)) -> dic
     from support_dashboard_api import dashboard_tickets
 
     return dashboard_tickets(limit=limit)
+
+
+@app.get("/api/admin/support/tickets/billing")
+def admin_billing_tickets(request: Request, limit: int = Query(500, ge=1, le=1000)) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_billing_tickets
+
+    return dashboard_billing_tickets(limit=limit)
+
+
+@app.post("/api/admin/support/tickets/billing/dismiss")
+async def admin_billing_dismiss(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_billing_dismiss
+
+    try:
+        body = await request.json() if await request.body() else {}
+    except Exception:
+        body = {}
+    return dashboard_billing_dismiss(str(body.get("id") or ""))
+
+
+@app.post("/api/admin/support/tickets/{ticket_id}/resolve")
+async def admin_ticket_resolve(ticket_id: int, request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_ticket_set_resolved
+
+    try:
+        body = await request.json() if await request.body() else {}
+    except Exception:
+        body = {}
+    resolved = bool(body.get("resolved", True))
+    return dashboard_ticket_set_resolved(ticket_id, resolved)
+
+
+@app.post("/api/admin/support/sessions/coach/variations")
+async def admin_session_coach_variations(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_response_variations
+
+    body = await request.json()
+    return dashboard_response_variations(
+        str(body.get("user_message") or ""),
+        str(body.get("original_response") or ""),
+        str(body.get("draft") or ""),
+    )
+
+
+@app.post("/api/admin/support/sessions/{call_id}/resolve")
+async def admin_session_resolve(call_id: str, request: Request) -> dict:
+    require_admin_auth(request)
+    from support_dashboard_api import dashboard_session_set_resolved
+
+    try:
+        body = await request.json() if await request.body() else {}
+    except Exception:
+        body = {}
+    resolved = bool(body.get("resolved", True))
+    return dashboard_session_set_resolved(call_id, resolved)
 
 
 @app.get("/api/admin/support/appointments")
@@ -757,25 +824,24 @@ def admin_playbook_get(request: Request) -> dict:
     return get_playbook(REPO_ROOT)
 
 
-@app.post("/api/admin/support/knowledge/playbook/entry")
-async def admin_playbook_append(request: Request) -> dict:
-    require_admin_auth(request)
+def _append_and_index_playbook_entry(title: str, content: str) -> dict:
+    """Append a playbook entry and make it live without a blocking rebuild.
+
+    Keep this fast: never rebuild the whole BM25 corpus on the request thread.
+    If the retriever is already warm we index the new entry in place (~50ms).
+    If it is cold (cache cleared by another action), we just rebuild lazily
+    off-thread — the entry is already on disk, so the background warm / next
+    ask will pick it up."""
     from support_knowledge_api import append_playbook_entry
 
-    body = PlaybookEntryRequest(**(await request.json()))
-    result = append_playbook_entry(REPO_ROOT, body.title, body.content)
+    result = append_playbook_entry(REPO_ROOT, title, content)
     if result.get("ok"):
-        # Keep this request fast: never rebuild the whole BM25 corpus on the
-        # request thread. If the retriever is already warm we index the new
-        # entry in place (~50ms). If it is cold (cache cleared by another
-        # action), we just rebuild lazily off-thread — the entry is already on
-        # disk, so the background warm / next ask will pick it up.
         indexed = False
         if get_retriever.cache_info().currsize:
             try:
                 adder = getattr(get_retriever(), "add_playbook_entry_to_index", None)
                 if callable(adder):
-                    indexed = bool(adder(body.title, body.content))
+                    indexed = bool(adder(title, content))
             except Exception:
                 indexed = False
         # Drop the agent's cached wiki context so the new answer is used next ask.
@@ -791,6 +857,35 @@ async def admin_playbook_append(request: Request) -> dict:
     return result
 
 
+@app.post("/api/admin/support/knowledge/playbook/entry")
+async def admin_playbook_append(request: Request) -> dict:
+    require_admin_auth(request)
+    body = PlaybookEntryRequest(**(await request.json()))
+    return _append_and_index_playbook_entry(body.title, body.content)
+
+
+@app.post("/api/admin/support/sessions/coach/save")
+async def admin_session_coach_save(request: Request) -> dict:
+    """Save a corrected session response as a context-aware playbook entry."""
+    require_admin_auth(request)
+    from support_dashboard_api import build_coach_playbook_entry
+
+    body = await request.json()
+    entry = build_coach_playbook_entry(
+        trigger=str(body.get("trigger") or ""),
+        trigger_edited=bool(body.get("trigger_edited")),
+        original_response=str(body.get("original_response") or ""),
+        corrected_response=str(body.get("corrected_response") or ""),
+        context_turns=list(body.get("context_turns") or []),
+    )
+    if not entry.get("ok"):
+        return entry
+    result = _append_and_index_playbook_entry(entry["title"], entry["content"])
+    if not result.get("ok"):
+        return result
+    return {"ok": True, "id": result.get("id"), "trigger": entry["trigger"], "context": entry["context"]}
+
+
 @app.delete("/api/admin/support/knowledge/playbook/entry/{entry_id}")
 def admin_playbook_delete(request: Request, entry_id: str) -> dict:
     require_admin_auth(request)
@@ -800,6 +895,25 @@ def admin_playbook_delete(request: Request, entry_id: str) -> dict:
     if result.get("ok"):
         invalidate_support_retriever_cache()
         warm_support_retriever_in_background()
+    return result
+
+
+@app.put("/api/admin/support/knowledge/playbook/entry/{entry_id}")
+async def admin_playbook_update(request: Request, entry_id: str) -> dict:
+    require_admin_auth(request)
+    from support_knowledge_api import update_playbook_entry
+
+    body = PlaybookEntryRequest(**(await request.json()))
+    result = update_playbook_entry(REPO_ROOT, entry_id, body.title, body.content)
+    if result.get("ok"):
+        invalidate_support_retriever_cache()
+        warm_support_retriever_in_background()
+        try:
+            from support_agent import invalidate_executor_wiki
+
+            invalidate_executor_wiki()
+        except Exception:
+            pass
     return result
 
 

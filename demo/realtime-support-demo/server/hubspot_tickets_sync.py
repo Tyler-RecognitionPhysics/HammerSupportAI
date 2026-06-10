@@ -164,6 +164,20 @@ def _init_state_db(conn: sqlite3.Connection) -> None:
             file_name TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL DEFAULT ''
         );
+        -- Lightweight record of EVERY discovered ticket (open + closed), captured
+        -- from the discovery pass at no extra API cost. Only closed/resolved
+        -- tickets get the full timeline enrichment + markdown in hubspot_tickets;
+        -- this table lets CS Questions rank top reasons across ALL inbound demand
+        -- while answer-learning stays scoped to resolved tickets.
+        CREATE TABLE IF NOT EXISTS hubspot_all_tickets (
+            ticket_id TEXT PRIMARY KEY,
+            subject TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL DEFAULT '',
+            stage_id TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT '',
+            synced_at TEXT NOT NULL DEFAULT ''
+        );
         """
     )
     try:
@@ -178,6 +192,48 @@ def _init_state_db(conn: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass
+
+
+def _upsert_all_tickets(conn: sqlite3.Connection, tickets_data: list[dict[str, Any]]) -> int:
+    """Record every discovered ticket (open + closed) for CS Questions ranking.
+
+    Captures subject + initial description (`content`) + live pipeline stage from
+    the discovery pass that already downloaded them, so the top-reasons ranking can
+    reflect ALL inbound demand without any extra HubSpot API calls. Resolved-ticket
+    enrichment (timelines, markdown, KB index) is unchanged and still resolved-only.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    rows: list[tuple[str, str, str, str, str, str, str]] = []
+    for ticket in tickets_data:
+        ticket_id = str(ticket.get("id") or "").strip()
+        if not ticket_id:
+            continue
+        props = ticket.get("properties") or {}
+        subject = _redact_pii(str(props.get("subject") or ""))
+        content = _redact_pii(str(props.get("content") or ""))
+        stage_id = str(props.get("hs_pipeline_stage") or "").strip()
+        created_at = str(props.get("createdate") or ticket.get("createdAt") or "")
+        updated_at = str(props.get("hs_lastmodifieddate") or ticket.get("updatedAt") or "")
+        rows.append((ticket_id, subject, content, stage_id, created_at, updated_at, now))
+    if not rows:
+        return 0
+    conn.executemany(
+        """
+        INSERT INTO hubspot_all_tickets (
+          ticket_id, subject, content, stage_id, created_at, updated_at, synced_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(ticket_id) DO UPDATE SET
+          subject=excluded.subject,
+          content=excluded.content,
+          stage_id=excluded.stage_id,
+          created_at=excluded.created_at,
+          updated_at=excluded.updated_at,
+          synced_at=excluded.synced_at
+        """,
+        rows,
+    )
+    return len(rows)
 
 
 def _rebuild_kb_index() -> None:
@@ -600,6 +656,16 @@ async def run_hubspot_tickets_sync_async(*, full_backfill: bool = False) -> dict
         conn = sqlite3.connect(str(state_path))
         try:
             _init_state_db(conn)
+
+            # Record every discovered ticket (open + closed) for CS Questions
+            # demand ranking. Free — these were already downloaded above.
+            try:
+                all_recorded = _upsert_all_tickets(conn, tickets_data)
+                conn.commit()
+                _log.info("HubSpot tickets sync: recorded %d tickets in all-tickets table", all_recorded)
+            except Exception as exc:
+                _log.warning("could not record all-tickets for CS Questions ranking: %s", exc)
+
             existing_hashes: dict[str, tuple[str, str]] = {}
             for row in conn.execute(
                 "SELECT ticket_id, content_hash, engagements_hash FROM hubspot_tickets"

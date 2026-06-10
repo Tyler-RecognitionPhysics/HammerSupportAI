@@ -1139,3 +1139,29 @@ def delete_playbook_entry(repo_root: Path, entry_id: str) -> dict[str, Any]:
         new_content += "\n"
     pb_path.write_text(new_content, encoding="utf-8")
     return {"ok": True}
+
+
+def update_playbook_entry(repo_root: Path, entry_id: str, title: str, content: str) -> dict[str, Any]:
+    """Replace one playbook entry in place (preserves order and file preamble)."""
+    if _is_serverless():
+        return {"ok": False, "error": "Playbook edits are read-only on production."}
+    if not title.strip() or not content.strip():
+        return {"ok": False, "error": "Title and content required."}
+    pb_path = _playbook_path(repo_root)
+    if not pb_path.is_file():
+        return {"ok": False, "error": "Playbook not found."}
+    file_content = pb_path.read_text(encoding="utf-8")
+    entries = _parse_playbook_entries(file_content)
+    if not any(e["id"] == entry_id for e in entries):
+        return {"ok": False, "error": "Entry not found."}
+
+    heading = title.strip() if title.strip().startswith("###") else f"### {title.strip()}"
+    new_block = f"{heading}\n\n{content.strip()}"
+
+    # Anything before the first ### heading (file title/description) is kept as-is.
+    preamble = re.split(r"(?m)^###\s+.+$", file_content)[0].strip()
+    blocks = [preamble] if preamble else []
+    for e in entries:
+        blocks.append(new_block if e["id"] == entry_id else f"{e['heading']}\n\n{e['body']}")
+    pb_path.write_text("\n\n".join(blocks).strip() + "\n", encoding="utf-8")
+    return {"ok": True, "id": _entry_hash(new_block)}

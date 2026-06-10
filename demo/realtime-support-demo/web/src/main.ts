@@ -40,17 +40,16 @@ type ChatResponse = {
   hubspot_ticket_id?: string;
 };
 
-type IssueStarter = {
-  label: string;
-  prompt: string;
-};
-
 let siteCopy: SiteCopy = {};
 let uiState: UiState = "idle";
 let supportMode: SupportMode = "chat";
 let statusText = "";
 let errorDetail = "";
 let transcript: { role: "user" | "agent"; text: string }[] = [];
+// Follow the live conversation: stay pinned to the newest line unless the user
+// scrolls up to read history, in which case we preserve their position.
+let transcriptStickToBottom = true;
+let transcriptSavedScrollTop = 0;
 let chatMessages: { role: "user" | "assistant"; content: string }[] = [];
 let chatSessionId = "";
 let chatBusy = false;
@@ -145,6 +144,38 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// Escape plain text, then turn URLs and email addresses into clickable links.
+// Matched tokens are escaped for safe use in href attributes; non-link text is
+// escaped as usual, so this stays XSS-safe.
+const LINKIFY_RE =
+  /(https?:\/\/[^\s<>"]+)|(\bwww\.[^\s<>"]+)|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+
+function linkify(raw: string): string {
+  let out = "";
+  let last = 0;
+  let m: RegExpExecArray | null;
+  LINKIFY_RE.lastIndex = 0;
+  while ((m = LINKIFY_RE.exec(raw)) !== null) {
+    out += escapeHtml(raw.slice(last, m.index));
+    const token = m[0];
+    if (m[3]) {
+      const email = escapeHtml(token);
+      out += `<a href="mailto:${email}">${email}</a>`;
+    } else {
+      // Trim trailing punctuation that is unlikely to be part of the URL.
+      const trimmed = token.replace(/[.,;:!?)\]'"]+$/, "");
+      const trailing = token.slice(trimmed.length);
+      const safe = escapeHtml(trimmed);
+      const href = m[2] ? `https://${safe}` : safe;
+      out += `<a href="${href}" target="_blank" rel="noopener noreferrer">${safe}</a>`;
+      out += escapeHtml(trailing);
+    }
+    last = m.index + token.length;
+  }
+  out += escapeHtml(raw.slice(last));
+  return out;
+}
+
 const ICON_VOICE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="23"/><line x1="8" x2="16" y1="23" y2="23"/></svg>`;
 
 const ICON_CHAT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>`;
@@ -153,55 +184,15 @@ const SEND_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 
 const SEARCH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`;
 
-function issueStarters(): IssueStarter[] {
-  return [
-    {
-      label: copy("rt_issue_login", "Login help"),
-      prompt: copy("rt_issue_login_prompt", "I need help logging in to my Hammer account."),
-    },
-    {
-      label: copy("rt_issue_leads", "Lead delivery"),
-      prompt: copy("rt_issue_leads_prompt", "Leads are not arriving in my Hammer account."),
-    },
-    {
-      label: copy("rt_issue_billing", "Billing or account"),
-      prompt: copy("rt_issue_billing_prompt", "I have a billing or account question."),
-    },
-    {
-      label: copy("rt_issue_integrations", "Integrations"),
-      prompt: copy("rt_issue_integrations_prompt", "I need help with a Hammer integration."),
-    },
-    {
-      label: copy("rt_issue_products", "Product setup"),
-      prompt: copy("rt_issue_products_prompt", "I need help setting up or using a Hammer product."),
-    },
-  ];
-}
-
 function renderChat(): string {
   return chatMessages
-    .map((m) => `<div class="chat__msg chat__msg--${m.role}">${escapeHtml(m.content)}</div>`)
+    .map((m) => `<div class="chat__msg chat__msg--${m.role}">${linkify(m.content)}</div>`)
     .join("");
 }
 
 function renderSupportNotice(): string {
   if (!supportNotice) return "";
   return `<p class="support-notice support-notice--${supportNotice.tone}" role="status">${escapeHtml(supportNotice.text)}</p>`;
-}
-
-function renderIssueStarters(live: boolean, connecting: boolean): string {
-  if (chatMessages.length > 0 || chatBusy || live || connecting) return "";
-  return `
-    <div class="help-quick" aria-label="${escapeHtml(copy("rt_issue_starters_label", "Common support topics"))}">
-      ${issueStarters()
-        .map(
-          (item) => `
-        <button class="help-quick__chip" type="button" data-issue-prompt="${escapeHtml(item.prompt)}">
-          ${escapeHtml(item.label)}
-        </button>`,
-        )
-        .join("")}
-    </div>`;
 }
 
 function renderHeroVoiceButton(live: boolean, connecting: boolean): string {
@@ -389,11 +380,14 @@ function renderFallbackTicket(): string {
 
 function renderTranscript(): string {
   if (!transcript.length) return `<p class="muted">Listening…</p>`;
+  const lastIndex = transcript.length - 1;
   return transcript
-    .map(
-      (t) =>
-        `<div class="transcript__line"><span class="transcript__role">${t.role === "user" ? "You" : "Hannah"}</span>${escapeHtml(t.text)}</div>`,
-    )
+    .map((t, i) => {
+      const roleClass = t.role === "user" ? "transcript__line--user" : "transcript__line--agent";
+      const latestClass = i === lastIndex ? " transcript__line--latest" : "";
+      const label = t.role === "user" ? "You" : "Hannah";
+      return `<div class="transcript__line ${roleClass}${latestClass}"><span class="transcript__role">${label}</span>${escapeHtml(t.text)}</div>`;
+    })
     .join("");
 }
 
@@ -405,7 +399,7 @@ function renderSessionPanel(live: boolean): string {
       ${statusText ? `<p class="help-session__status" role="status">${escapeHtml(statusText)}</p>` : ""}
       <div class="hero-glass">
         <div class="hero-glass__head">${escapeHtml(copy("rt_transcript_title", "Live conversation"))}</div>
-        <div class="hero-glass__body" id="transcript-body">${renderTranscript()}</div>
+        <div class="hero-glass__body" id="transcript-body" role="log" aria-live="polite" aria-relevant="additions text" tabindex="0">${renderTranscript()}</div>
         <div class="hero-glass__foot">
           <button id="btn-end" class="landing-cta landing-cta--end" type="button">${escapeHtml(copy("rt_end_call", "End call"))}</button>
         </div>
@@ -450,7 +444,6 @@ function render(): void {
             <h1 class="help-hero__title">${escapeHtml(copy("rt_hero_headline_simple", "Get help with your Hammer account"))}</h1>
             <p class="help-hero__lede">${escapeHtml(copy("rt_hero_chat_hint", "Ask Hannah about login issues, lead delivery, billing, integrations, or product setup. If she cannot finish it, your ticket goes to Hammer support."))}</p>
           </header>
-          ${renderIssueStarters(live, connecting)}
           ${renderHeroChat(live, connecting)}
           ${renderSupportNotice()}
           ${showError ? `<p class="help-session__error" role="alert">${escapeHtml(errorDetail)}</p>` : ""}
@@ -496,12 +489,6 @@ function render(): void {
       render();
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("[data-issue-prompt]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const text = btn.dataset.issuePrompt?.trim() ?? "";
-      if (text) void sendChatWithText(text);
-    });
-  });
   document.getElementById("btn-ticket-toggle")?.addEventListener("click", () => {
     showTicketForm = !showTicketForm;
     if (ticketSubmitState === "success" || ticketSubmitState === "error") {
@@ -532,7 +519,22 @@ function render(): void {
     });
 
   const transcriptBody = document.getElementById("transcript-body");
-  if (transcriptBody) transcriptBody.scrollTop = transcriptBody.scrollHeight;
+  if (transcriptBody) {
+    // The DOM is rebuilt on every render, so restore the right scroll position:
+    // pin to the newest line when the user is following along, otherwise keep
+    // them where they scrolled back to.
+    if (transcriptStickToBottom) {
+      transcriptBody.scrollTop = transcriptBody.scrollHeight;
+    } else {
+      transcriptBody.scrollTop = transcriptSavedScrollTop;
+    }
+    transcriptBody.addEventListener("scroll", () => {
+      const distanceFromBottom =
+        transcriptBody.scrollHeight - transcriptBody.scrollTop - transcriptBody.clientHeight;
+      transcriptStickToBottom = distanceFromBottom <= 32;
+      transcriptSavedScrollTop = transcriptBody.scrollTop;
+    });
+  }
 
   const chatThread = document.getElementById("hero-chat-thread");
   if (chatThread) chatThread.scrollTop = chatThread.scrollHeight;
@@ -583,6 +585,8 @@ async function startVoice(): Promise<void> {
   errorDetail = "";
   statusText = copy("rt_status_connecting", "Connecting…");
   transcript = [];
+  transcriptStickToBottom = true;
+  transcriptSavedScrollTop = 0;
   render();
   try {
     const { token } = await getConversationToken();

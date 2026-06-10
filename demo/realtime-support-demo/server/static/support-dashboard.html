@@ -8,13 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/admin/support/dashboard.css?v=13" id="dashboardCss" />
+  <link rel="stylesheet" href="/admin/support/dashboard.css?v=15" id="dashboardCss" />
   <script>
     (function () {
       var link = document.getElementById("dashboardCss");
       link.href = location.pathname.indexOf("/debug/support-dashboard") !== -1
-        ? "/debug/support-dashboard.css?v=13"
-        : "/admin/support/dashboard.css?v=13";
+        ? "/debug/support-dashboard.css?v=15"
+        : "/admin/support/dashboard.css?v=15";
     })();
   </script>
 </head>
@@ -56,8 +56,9 @@
         <div class="sidebar__section">Support AI</div>
         <nav class="sidebar__nav" role="tablist">
           <button class="tab is-active" data-tab="overview" role="tab">Overview</button>
-          <button class="tab" data-tab="sessions" role="tab">Sessions</button>
+          <button class="tab" data-tab="sessions" role="tab">Sessions <span class="tab__badge" id="sessionsTabBadge" hidden>0</span></button>
           <button class="tab" data-tab="calendar" role="tab">Calendar</button>
+          <button class="tab" data-tab="billing" role="tab">Billing &amp; Cancellations <span class="tab__badge" id="billingTabBadge" hidden>0</span></button>
           <button class="tab" data-tab="knowledge" role="tab">Knowledge</button>
           <button class="tab" data-tab="cs-questions" role="tab">CS Questions</button>
           <button class="tab" data-tab="qa" role="tab">Q&amp;A</button>
@@ -87,6 +88,14 @@
           <div class="card integrations" style="margin-top:1rem">
             <div class="card__head">Integrations &amp; Sync</div>
             <div class="integrations__list">
+              <!-- Ordered by AI retrieval priority: official KB first, Slack threads next, resolved tickets last. -->
+              <div class="integration">
+                <div class="integration__main" id="hubspotKbStatus"><div class="empty">Loading…</div></div>
+                <div class="integration__actions">
+                  <button class="btn btn--sm btn--red" id="btnHubspotKbSync" type="button">Sync</button>
+                </div>
+                <p class="settings-note integration__result" id="hubspotKbSyncResult" hidden></p>
+              </div>
               <div class="integration">
                 <div class="integration__main" id="slackStatus"><div class="empty">Loading…</div></div>
                 <div class="integration__actions">
@@ -94,13 +103,6 @@
                   <button class="btn btn--sm btn--ghost" id="btnSlackBackfill" type="button">Backfill</button>
                 </div>
                 <p class="settings-note integration__result" id="slackSyncResult" hidden></p>
-              </div>
-              <div class="integration">
-                <div class="integration__main" id="hubspotKbStatus"><div class="empty">Loading…</div></div>
-                <div class="integration__actions">
-                  <button class="btn btn--sm btn--red" id="btnHubspotKbSync" type="button">Sync</button>
-                </div>
-                <p class="settings-note integration__result" id="hubspotKbSyncResult" hidden></p>
               </div>
               <div class="integration">
                 <div class="integration__main" id="hubspotTicketsStatus"><div class="empty">Loading…</div></div>
@@ -135,6 +137,10 @@
             <div class="sessions-toolbar__right">
               <input type="search" class="sessions-search" id="sessionSearch" placeholder="Search channel, category…" autocomplete="off" aria-label="Search sessions" />
               <span class="sessions-meta" id="sessionsMeta">Loading sessions…</span>
+              <button class="btn btn--sm btn--ghost sessions-clear" id="btnClearSessions" type="button">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>
+                Clear sessions
+              </button>
             </div>
           </div>
           <div class="card sessions-card">
@@ -181,12 +187,51 @@
             </div>
           </div>
           <div class="stats cal-stats" id="calStatGrid"></div>
-          <div class="card cal-card" id="calMonthCard">
-            <div class="cal-weekdays" id="calWeekdays" aria-hidden="true"></div>
-            <div class="cal-grid" id="calGrid"></div>
+          <div class="cal-layout" id="calMonthCard">
+            <div class="card cal-card">
+              <div class="cal-weekdays" id="calWeekdays" aria-hidden="true"></div>
+              <div class="cal-grid" id="calGrid"></div>
+            </div>
+            <aside class="card cal-agenda" id="calAgenda" aria-label="Selected day callbacks">
+              <div class="cal-agenda__head">
+                <div class="cal-agenda__heading">
+                  <div class="cal-agenda__title" id="calAgendaTitle">—</div>
+                  <div class="cal-agenda__sub" id="calAgendaSub"></div>
+                </div>
+                <button class="btn btn--sm btn--red" id="calAgendaAdd" type="button">+ Add</button>
+              </div>
+              <div class="cal-agenda__body" id="calAgendaBody"></div>
+            </aside>
           </div>
           <div class="card cal-list-card" id="calListCard" hidden>
             <div class="cal-list" id="calList"></div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-billing" role="tabpanel">
+          <p class="settings-note" style="margin-top:0">
+            Every <strong>billing</strong> and <strong>cancellation</strong> request Hannah collects is routed here with the
+            dealership, contact, and a summary — so the team can follow up fast. Mark each one done once it's handled.
+          </p>
+
+          <div class="stats billing-stats" id="billingStatGrid"></div>
+
+          <div class="billing-toolbar">
+            <div class="filter-pills" id="billingFilters" role="tablist" aria-label="Filter requests">
+              <button class="filter-pill is-active" type="button" data-billing-filter="all" role="tab">All <span class="filter-pill__count" id="bCntAll">0</span></button>
+              <button class="filter-pill" type="button" data-billing-filter="billing" role="tab">Billing <span class="filter-pill__count" id="bCntBilling">0</span></button>
+              <button class="filter-pill" type="button" data-billing-filter="cancellation" role="tab">Cancellations <span class="filter-pill__count" id="bCntCancel">0</span></button>
+              <button class="filter-pill" type="button" data-billing-filter="open" role="tab">Open <span class="filter-pill__count" id="bCntOpen">0</span></button>
+              <button class="filter-pill" type="button" data-billing-filter="resolved" role="tab">Done <span class="filter-pill__count" id="bCntDone">0</span></button>
+            </div>
+            <div class="billing-toolbar__right">
+              <input type="search" class="sessions-search" id="billingSearch" placeholder="Search dealership, email, contact…" autocomplete="off" aria-label="Search requests" />
+              <button class="btn btn--sm btn--ghost" id="btnBillingRefresh" type="button">Refresh</button>
+            </div>
+          </div>
+
+          <div id="billingList" class="billing-list">
+            <div class="empty">Loading…</div>
           </div>
         </section>
 
@@ -223,19 +268,26 @@
           </div>
 
           <div class="kb-panel" id="kb-panel-playbook" hidden>
-            <div class="kb-playbook-header">
-              <div>
-                <div class="settings-section__label" style="margin-bottom:0.2rem">Learned Playbook</div>
-                <div class="kb-hint" id="kbPlaybookNote">Approved support answers.</div>
+            <div class="pb-hero">
+              <div class="pb-hero__main">
+                <div class="pb-hero__title">
+                  Playbook
+                  <span class="pb-count" id="kbPlaybookNote">—</span>
+                </div>
+                <p class="pb-hero__sub">The exact answers Hannah gives customers. Add or change one and she uses it right away.</p>
               </div>
-              <button type="button" class="btn btn--sm btn--primary btn--red" id="kbPlaybookAddToggle" hidden>+ Add answer</button>
+              <button class="btn btn--primary btn--red pb-add-btn" id="btnKbPlaybookAdd" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Add answer
+              </button>
             </div>
 
-            <form class="kb-playbook-add" id="kbPlaybookAddForm" hidden>
-              <label class="kb-playbook-add__label" for="kbPlaybookAddTitle">Question / topic</label>
+            <form class="kb-playbook-add pb-add-form" id="kbPlaybookAddForm" hidden>
+              <div class="pb-add-form__title">New answer</div>
+              <label class="kb-playbook-add__label" for="kbPlaybookAddTitle">Customer question</label>
               <input type="text" id="kbPlaybookAddTitle" class="kb-playbook-add__input" placeholder="e.g. How do I reset my password?" autocomplete="off" />
-              <label class="kb-playbook-add__label" for="kbPlaybookAddBody">Approved answer Hannah should give</label>
-              <textarea id="kbPlaybookAddBody" class="kb-playbook-add__textarea" rows="4" placeholder="Write the exact answer Hannah should use for this question…"></textarea>
+              <label class="kb-playbook-add__label" for="kbPlaybookAddBody">Answer Hannah should give</label>
+              <textarea id="kbPlaybookAddBody" class="kb-playbook-add__textarea" rows="4" placeholder="Write it exactly the way Hannah should say it to a customer…"></textarea>
               <div class="kb-playbook-add__foot">
                 <span class="kb-playbook-add__msg" id="kbPlaybookAddMsg"></span>
                 <div class="kb-playbook-add__actions">
@@ -245,12 +297,22 @@
               </div>
             </form>
 
+            <div class="pb-toolbar" id="kbPlaybookToolbar" hidden>
+              <div class="pb-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="search" id="kbPlaybookSearch" placeholder="Find an answer…" autocomplete="off" aria-label="Search playbook answers" />
+              </div>
+            </div>
+
             <div id="kbPlaybookList" class="kb-playbook-list"></div>
 
-            <div class="kb-playbook-header" style="margin-top:1.5rem">
-              <div>
-                <div class="settings-section__label" style="margin-bottom:0.2rem">Pinned answer tickets</div>
-                <div class="kb-hint" id="kbTicketPinsNote">No pinned tickets yet.</div>
+            <div class="pb-hero pb-hero--sub">
+              <div class="pb-hero__main">
+                <div class="pb-hero__title pb-hero__title--sm">
+                  Pinned tickets
+                  <span class="pb-count" id="kbTicketPinsNote">—</span>
+                </div>
+                <p class="pb-hero__sub">Tickets you pinned from Test AI results. Hannah always uses these for their questions.</p>
               </div>
             </div>
             <div id="kbTicketPinsList" class="kb-pin-list"></div>
@@ -259,12 +321,9 @@
 
         <section class="panel" id="panel-cs-questions" role="tabpanel">
           <p class="settings-note" style="margin-top:0">
-            The top questions dealership customers actually ask, mined only from
-            <strong>customer-initiated</strong> tickets — inbound support-form submissions, emails,
-            chat messages, and inbound calls — then clustered by AI. Hammer-initiated work (account
-            reviews, onboarding, sales/upsell, and proactive outreach) is excluded so the list
-            reflects what customers contact you about. Use these to teach Hannah and prioritize
-            knowledge-base coverage.
+            The questions customers ask most, ranked from <strong>every inbound ticket</strong> —
+            open and resolved. Tickets Hammer started (reviews, onboarding, sales, outreach) don't
+            count. Use this list to teach Hannah and fill gaps in the knowledge base.
           </p>
 
           <div class="card" style="margin-top:1rem">
@@ -428,7 +487,13 @@
 
         <!-- Transcript -->
         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-          <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Transcript</div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;">
+            <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Transcript</div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="sess-coach-hint">Hover a Hannah reply to improve it</span>
+              <button class="btn btn--sm btn--ghost" id="sessionTranscriptCopy" type="button">Copy transcript</button>
+            </div>
+          </div>
           <div id="sessionDetailTranscript" style="display: flex; flex-direction: column; gap: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 1rem; max-height: 380px; overflow-y: auto;">
             <!-- Render turns here -->
           </div>
@@ -507,12 +572,45 @@
     </div>
   </div>
 
+  <div class="call-modal" id="clearSessionsModal" hidden aria-hidden="true">
+    <div class="call-modal__backdrop" data-clear-close aria-hidden="true"></div>
+    <div class="call-modal__panel confirm-modal__panel" role="dialog" aria-modal="true" aria-labelledby="clearSessionsTitle">
+      <div class="confirm-modal__body">
+        <div class="confirm-modal__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>
+        </div>
+        <div class="confirm-modal__title" id="clearSessionsTitle">Clear all sessions?</div>
+        <p class="confirm-modal__text" id="clearSessionsText">
+          This permanently deletes every stored session and its transcript and summary. This cannot be undone.
+        </p>
+      </div>
+      <div class="confirm-modal__foot">
+        <button class="btn" data-clear-close type="button">Cancel</button>
+        <button class="btn btn--red" id="btnClearSessionsConfirm" type="button">Delete all sessions</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="call-modal" id="qaSourcesModal" hidden aria-hidden="true">
+    <div class="call-modal__backdrop" data-qa-sources-close aria-hidden="true"></div>
+    <div class="call-modal__panel qa-sources-modal__panel" role="dialog" aria-modal="true" aria-labelledby="qaSourcesTitle">
+      <div class="qa-sources-modal__head">
+        <div class="qa-sources-modal__heading">
+          <div class="qa-sources-modal__title" id="qaSourcesTitle">Sources</div>
+          <div class="qa-sources-modal__sub" id="qaSourcesSub"></div>
+        </div>
+        <button class="btn btn--sm" type="button" data-qa-sources-close>Close</button>
+      </div>
+      <div class="qa-sources-modal__list" id="qaSourcesList"></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script>
     const API = "/api/admin/support";
     const TOKEN_KEY = "support_admin_token";
-    const PAGE_TITLES = { overview: "Overview", sessions: "Sessions", calendar: "Calendar", knowledge: "Knowledge", "cs-questions": "CS Questions", qa: "Questions & Answers", settings: "Settings" };
+    const PAGE_TITLES = { overview: "Overview", sessions: "Sessions", calendar: "Calendar", billing: "Billing & Cancellations", knowledge: "Knowledge", "cs-questions": "CS Questions", qa: "Questions & Answers", settings: "Settings" };
     let csqPollTimer = null;
     let ticketsPollTimer = null;
     let csqData = null;
@@ -604,8 +702,8 @@
 
     function channelLabel(ch) {
       const map = {
-        browser_voice: "Browser",
-        browser: "Browser",
+        browser_voice: "Voice",
+        browser: "Voice",
         chat: "Chat",
         text: "Chat",
         phone: "Phone",
@@ -895,11 +993,12 @@
       } else {
         ticket = '<span class="sess-muted">—</span>';
       }
+      const isNew = newSessionIds.has(c.call_id);
       return `
-        <tr data-call-id="${escapeHtml(c.call_id)}">
-          <td class="sess-time"><span class="sess-time__date">${escapeHtml(t.date)}</span><span class="sess-time__clock">${escapeHtml(t.clock)}</span></td>
+        <tr data-call-id="${escapeHtml(c.call_id)}"${isNew ? ' class="sess-row--new"' : ""}>
+          <td class="sess-time">${isNew ? '<span class="sess-new-pill">New</span>' : ""}<span class="sess-time__date">${escapeHtml(t.date)}</span><span class="sess-time__clock">${escapeHtml(t.clock)}</span></td>
           <td><span class="sess-channel"><span class="sess-channel__dot sess-channel__dot--${dot}"></span>${escapeHtml(channelLabel(c.channel))}</span></td>
-          <td><span class="sess-cat${cat ? "" : " sess-muted"}">${escapeHtml(cat || "Uncategorized")}</span></td>
+          <td><span class="sess-cat${cat ? "" : " sess-muted"}">${escapeHtml(cat ? csqCategoryLabel(cat) : "Uncategorized")}</span></td>
           <td>${escalated}</td>
           <td>${resolved}</td>
           <td>${ticket}</td>
@@ -1107,6 +1206,9 @@
         : docs;
 
       const totals = cachedGroupTotals || groups;
+      // The playbook indexes as one file but holds many approved answers —
+      // count entries so this matches the Playbook tab.
+      if (kbPlaybookEntries.length && totals["Playbook"]) totals["Playbook"] = kbPlaybookEntries.length;
       const summaryParts = KB_SOURCE_ORDER.filter((key) => totals[key]).map(
         (key) => `${formatSourceCount(totals[key])} ${key}`
       );
@@ -1155,7 +1257,7 @@
                   <div class="kb-source-group__title"><span class="kb-source-dot kb-source-dot--${kbBadgeClass(kbSourceLabel(source))}"></span>${escapeHtml(kbSourceLabel(source))}</div>
                   <div class="kb-source-group__hint">${escapeHtml(KB_SOURCE_HINTS[source] || KB_SOURCE_HINTS[kbSourceLabel(source)] || "")}</div>
                 </div>
-                <div class="kb-source-group__count">${formatSourceCount(totalInGroup)} source${totalInGroup === 1 ? "" : "s"}</div>
+                <div class="kb-source-group__count">${formatSourceCount(totalInGroup)} ${source === "Playbook" ? `answer${totalInGroup === 1 ? "" : "s"}` : `source${totalInGroup === 1 ? "" : "s"}`}</div>
               </button>
               <label class="kb-source-toggle" title="${aiOn ? "AI uses this source — click to exclude" : "Excluded from AI — click to include"}">
                 <input type="checkbox" class="kb-source-toggle__input" data-kb-enable="${escapeHtml(source)}" ${aiOn ? "checked" : ""} aria-label="${escapeHtml(kbSourceLabel(source))} ${aiOn ? "enabled" : "disabled"} for AI" />
@@ -1327,7 +1429,7 @@
       $("#sessionDetailMeta").textContent = `Started: ${fmtTime(call.started_at)} · Channel: ${channelLabel(call.channel)}`;
 
       $("#sessionDetailChannel").textContent = channelLabel(call.channel);
-      $("#sessionDetailCategory").textContent = call.issue_category || "—";
+      $("#sessionDetailCategory").textContent = call.issue_category ? csqCategoryLabel(call.issue_category) : "—";
       $("#sessionDetailEscalated").textContent = call.escalated ? "Yes" : "No";
       $("#sessionDetailResolved").textContent = call.resolved ? "Yes" : "No";
       const ticketEl = document.getElementById("sessionDetailTicket");
@@ -1342,22 +1444,226 @@
       const summaryText = call.interaction_summary || "No AI summary generated for this session yet.";
       $("#sessionSummaryText").textContent = summaryText;
 
-      const transcript = call.transcript || [];
+      sessionDetailCall = call;
+      renderSessionTranscript();
+    }
+
+    let sessionDetailCall = null;
+
+    function turnText(t) { return t ? (t.text || t.message || "") : ""; }
+    function isAiTurn(t) { return t && (t.role === "agent" || t.role === "assistant"); }
+
+    function renderSessionTranscript() {
+      const transcript = (sessionDetailCall && sessionDetailCall.transcript) || [];
       const transcriptEl = $("#sessionDetailTranscript");
+      const copyBtn = $("#sessionTranscriptCopy");
+      if (copyBtn) copyBtn.disabled = !transcript.length;
       if (!transcript.length) {
         transcriptEl.innerHTML = '<div class="empty" style="color: var(--text-muted);">No transcript available for this session.</div>';
-      } else {
-        transcriptEl.innerHTML = transcript.map((t) => {
-          const roleLabel = t.role === "user" ? "User" : (t.role === "agent" || t.role === "assistant" ? "Hannah" : t.role);
-          const bg = t.role === "user" ? "var(--bg)" : "var(--border-soft)";
-          return `
-            <div style="background: ${bg}; padding: 0.75rem 1rem; border-radius: 6px; display: flex; flex-direction: column; gap: 0.25rem;">
-              <span style="font-weight: 600; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted);">${escapeHtml(roleLabel)}</span>
-              <span style="font-size: 0.9rem; line-height: 1.4; color: var(--text);">${escapeHtml(t.text || t.message || "")}</span>
-            </div>
-          `;
-        }).join("");
+        return;
       }
+      transcriptEl.innerHTML = transcript.map((t, i) => {
+        const ai = isAiTurn(t);
+        const roleLabel = t.role === "user" ? "User" : (ai ? "Hannah" : t.role);
+        const text = turnText(t);
+        const improveBtn = ai && text.trim()
+          ? `<button class="turn-improve" type="button" data-turn-edit="${i}" title="Rewrite how Hannah should have responded here">
+               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+               Improve
+             </button>`
+          : "";
+        return `
+          <div class="sess-turn sess-turn--${ai ? "ai" : "user"}" data-turn-idx="${i}">
+            <div class="sess-turn__head">
+              <span class="sess-turn__role">${escapeHtml(roleLabel)}</span>
+              ${improveBtn}
+            </div>
+            <div class="sess-turn__text">${escapeHtml(text)}</div>
+            <div class="sess-turn__editor" hidden></div>
+          </div>`;
+      }).join("");
+    }
+
+    function transcriptAsText() {
+      const transcript = (sessionDetailCall && sessionDetailCall.transcript) || [];
+      return transcript
+        .map((t) => `${t.role === "user" ? "Customer" : (isAiTurn(t) ? "Hannah" : t.role)}: ${turnText(t)}`)
+        .join("\n\n");
+    }
+
+    async function copySessionTranscript() {
+      const text = transcriptAsText();
+      if (!text) { showToast("No transcript to copy."); return; }
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast("Transcript copied to clipboard");
+      } catch (_) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        showToast("Transcript copied to clipboard");
+      }
+    }
+
+    function precedingUserMessage(idx) {
+      const transcript = (sessionDetailCall && sessionDetailCall.transcript) || [];
+      for (let j = idx - 1; j >= 0; j--) {
+        if (transcript[j].role === "user" && turnText(transcript[j]).trim()) return turnText(transcript[j]).trim();
+      }
+      return "";
+    }
+
+    function closeTurnEditors() {
+      document.querySelectorAll("#sessionDetailTranscript .sess-turn").forEach((row) => {
+        const editor = row.querySelector(".sess-turn__editor");
+        if (editor) { editor.hidden = true; editor.innerHTML = ""; }
+        const text = row.querySelector(".sess-turn__text");
+        if (text) text.hidden = false;
+      });
+    }
+
+    function openTurnEditor(idx) {
+      const transcript = (sessionDetailCall && sessionDetailCall.transcript) || [];
+      const turn = transcript[idx];
+      const row = document.querySelector(`#sessionDetailTranscript .sess-turn[data-turn-idx="${idx}"]`);
+      if (!turn || !row) return;
+      closeTurnEditors();
+      const userMsg = precedingUserMessage(idx);
+      const editor = row.querySelector(".sess-turn__editor");
+      editor.innerHTML = `
+        <label class="turn-editor__trigger">
+          <span class="turn-editor__trigger-label">Applies when a customer says&hellip;</span>
+          <input type="text" class="turn-editor__trigger-input" autocomplete="off"
+            placeholder="e.g. How long does new lead provider setup take?" />
+          <span class="turn-editor__trigger-hint">Edit to broaden or narrow when this answer is used. Left as-is, it's automatically rewritten into a self-contained question using the conversation.</span>
+        </label>
+        <textarea class="turn-editor__input" rows="4" aria-label="Improved response"></textarea>
+        <div class="turn-editor__hint">Rewrite this the way Hannah should have said it — or generate 3 AI variations and pick one. Saving adds it to the Playbook, so she uses this answer for similar questions going forward.</div>
+        <div class="turn-editor__variants" hidden></div>
+        <div class="turn-editor__actions">
+          <button class="btn btn--sm btn--ghost turn-regen" type="button" data-turn-regen="${idx}">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+            Regenerate &middot; 3 options
+          </button>
+          <button class="btn btn--sm" type="button" data-turn-cancel="1">Cancel</button>
+          <button class="btn btn--sm btn--red" type="button" data-turn-save="${idx}">Save &amp; teach Hannah</button>
+        </div>`;
+      editor.querySelector(".turn-editor__input").value = turnText(turn);
+      const trigInput = editor.querySelector(".turn-editor__trigger-input");
+      trigInput.value = userMsg;
+      trigInput.dataset.raw = userMsg;
+      editor.hidden = false;
+      row.querySelector(".sess-turn__text").hidden = true;
+      const ta = editor.querySelector(".turn-editor__input");
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
+
+    function contextTurnsFor(idx) {
+      // Up to 10 turns of conversation ending at the corrected reply, so the
+      // backend can resolve vague references ("this process") in the trigger.
+      const transcript = (sessionDetailCall && sessionDetailCall.transcript) || [];
+      return transcript
+        .slice(Math.max(0, idx - 9), idx + 1)
+        .map((t) => ({ role: t.role, text: turnText(t) }))
+        .filter((t) => t.text.trim());
+    }
+
+    async function saveTurnCorrection(idx, btn) {
+      const transcript = (sessionDetailCall && sessionDetailCall.transcript) || [];
+      const turn = transcript[idx];
+      const row = document.querySelector(`#sessionDetailTranscript .sess-turn[data-turn-idx="${idx}"]`);
+      if (!turn || !row) return;
+      const corrected = (row.querySelector(".turn-editor__input")?.value || "").trim();
+      if (!corrected) { showToast("Write the response Hannah should give."); return; }
+      const original = turnText(turn).trim();
+      if (corrected === original) { showToast("Edit the response first — it's unchanged."); return; }
+      const trigInput = row.querySelector(".turn-editor__trigger-input");
+      const trigger = (trigInput?.value || "").trim();
+      const triggerEdited = !!trigInput && trigger !== (trigInput.dataset.raw || "").trim();
+      btn.disabled = true;
+      const prevLabel = btn.innerHTML;
+      btn.innerHTML = "Saving&hellip;";
+      try {
+        const res = await api("/sessions/coach/save", {
+          method: "POST",
+          body: JSON.stringify({
+            trigger,
+            trigger_edited: triggerEdited,
+            original_response: original,
+            corrected_response: corrected,
+            context_turns: contextTurnsFor(idx),
+          }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Could not save the correction.");
+        closeTurnEditors();
+        const textEl = row.querySelector(".sess-turn__text");
+        if (textEl && !row.querySelector(".sess-turn__coached")) {
+          const applies = res.trigger ? ` Applies when customers ask: &ldquo;${escapeHtml(res.trigger)}&rdquo;` : "";
+          textEl.insertAdjacentHTML(
+            "afterend",
+            `<div class="sess-turn__coached">Improved response saved.${applies}</div>`
+          );
+        }
+        showToast("Saved to Playbook — Hannah will use this response.");
+      } catch (ex) {
+        showToast(ex.message || "Could not save the correction.");
+        btn.disabled = false;
+        btn.innerHTML = prevLabel;
+      }
+    }
+
+    async function regenerateTurnVariations(idx, btn) {
+      const transcript = (sessionDetailCall && sessionDetailCall.transcript) || [];
+      const turn = transcript[idx];
+      const row = document.querySelector(`#sessionDetailTranscript .sess-turn[data-turn-idx="${idx}"]`);
+      if (!turn || !row) return;
+      const wrap = row.querySelector(".turn-editor__variants");
+      const draft = (row.querySelector(".turn-editor__input")?.value || "").trim();
+      const prevLabel = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = "Generating&hellip;";
+      wrap.hidden = false;
+      wrap.innerHTML = '<div class="turn-variant turn-variant--note">Hannah is drafting 3 variations&hellip;</div>';
+      try {
+        const trigVal = (row.querySelector(".turn-editor__trigger-input")?.value || "").trim();
+        const res = await api("/sessions/coach/variations", {
+          method: "POST",
+          body: JSON.stringify({
+            user_message: trigVal || precedingUserMessage(idx),
+            original_response: turnText(turn),
+            draft,
+          }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Could not generate variations.");
+        const variants = (res.variations || []).map((v) => String(v).trim()).filter(Boolean).slice(0, 3);
+        if (!variants.length) throw new Error("No variations were generated.");
+        wrap.innerHTML =
+          '<div class="turn-variants__label">Pick a variation (you can still edit it before saving):</div>' +
+          variants.map((v, i) => `
+            <button class="turn-variant" type="button" data-variant-pick="1">
+              <span class="turn-variant__opt">Option ${i + 1}</span>
+              <span class="turn-variant__text">${escapeHtml(v)}</span>
+            </button>`).join("");
+      } catch (ex) {
+        wrap.innerHTML = `<div class="turn-variant turn-variant--note turn-variant--error">${escapeHtml(ex.message || "Could not generate variations.")}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = prevLabel;
+      }
+    }
+
+    function pickTurnVariant(pickBtn) {
+      const row = pickBtn.closest(".sess-turn");
+      const ta = row?.querySelector(".turn-editor__input");
+      const text = pickBtn.querySelector(".turn-variant__text")?.textContent || "";
+      if (!ta || !text) return;
+      ta.value = text;
+      row.querySelectorAll(".turn-variant").forEach((el) => el.classList.toggle("is-picked", el === pickBtn));
+      ta.focus();
     }
 
     function closeSessionDetail() {
@@ -1368,31 +1674,95 @@
       document.body.classList.remove("modal-open");
     }
 
+    let kbPlaybookEntries = [];
+    let kbPlaybookExpanded = new Set();
+    let kbPlaybookEditingId = null;
+    let kbPlaybookQuery = "";
+
     function renderPlaybook(entries) {
       const list = entries || [];
-      $("#kbPlaybookNote").textContent = list.length ? `${list.length} approved entries` : "Empty playbook";
-      const addToggle = $("#kbPlaybookAddToggle");
-      if (addToggle) addToggle.hidden = !kbPlaybookEditable;
+      kbPlaybookEntries = list;
+      const q = kbPlaybookQuery.trim().toLowerCase();
+      const rows = q
+        ? list.filter((e) => `${e.heading || ""} ${e.body || ""}`.toLowerCase().includes(q))
+        : list;
+
+      const note = $("#kbPlaybookNote");
+      if (note) {
+        note.textContent = q
+          ? `${rows.length} of ${list.length}`
+          : `${list.length} answer${list.length === 1 ? "" : "s"}`;
+      }
+      const addBtn = $("#btnKbPlaybookAdd");
+      if (addBtn) addBtn.hidden = !kbPlaybookEditable;
+      const toolbar = $("#kbPlaybookToolbar");
+      if (toolbar) toolbar.hidden = !list.length;
       if (!kbPlaybookEditable) {
         const form = $("#kbPlaybookAddForm");
         if (form) form.hidden = true;
       }
+
       if (!list.length) {
-        $("#kbPlaybookList").innerHTML = '<div class="kb-empty">No playbook entries yet.</div>';
+        $("#kbPlaybookList").innerHTML = `
+        <div class="pb-empty">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <div class="pb-empty__title">No answers yet</div>
+          <div class="pb-empty__text">Add a question and the answer Hannah should give. She starts using it right away.</div>
+          ${kbPlaybookEditable ? '<button type="button" class="btn btn--sm btn--primary btn--red" data-pb-add>Add your first answer</button>' : ""}
+        </div>`;
         return;
       }
-      $("#kbPlaybookList").innerHTML = list.map((e) => {
+      if (!rows.length) {
+        $("#kbPlaybookList").innerHTML = `
+        <div class="pb-empty">
+          <div class="pb-empty__title">Nothing matches "${escapeHtml(kbPlaybookQuery.trim())}"</div>
+          <div class="pb-empty__text">Try a different word, or add it as a new answer.</div>
+        </div>`;
+        return;
+      }
+
+      $("#kbPlaybookList").innerHTML = rows.map((e) => {
         const title = (e.heading || "Entry").replace(/^#+\s*/, "");
-        const remove = kbPlaybookEditable
-          ? `<button type="button" class="btn btn--sm kb-fb-btn" data-pb-remove="${escapeHtml(e.id)}" title="Remove this answer from the playbook">Remove</button>`
+        const expanded = kbPlaybookExpanded.has(e.id);
+        const editing = kbPlaybookEditingId === e.id;
+        const isOpen = expanded || editing;
+        const preview = (e.body || "").replace(/\s+/g, " ").trim();
+        const actions = kbPlaybookEditable && !editing
+          ? `<span class="kb-playbook-entry__actions">
+              <button type="button" class="btn btn--sm kb-fb-btn" data-pb-edit="${escapeHtml(e.id)}" title="Edit this answer">Edit</button>
+              <button type="button" class="btn btn--sm kb-fb-btn" data-pb-remove="${escapeHtml(e.id)}" title="Remove this answer from the playbook">Remove</button>
+            </span>`
           : "";
+        let detail = "";
+        if (editing) {
+          detail = `
+          <div class="kb-playbook-entry__edit" data-pb-editor="${escapeHtml(e.id)}">
+            <label class="kb-playbook-add__label">Customer question</label>
+            <input type="text" class="kb-playbook-add__input" data-pb-edit-title value="${escapeHtml(title)}" />
+            <label class="kb-playbook-add__label">Answer Hannah should give</label>
+            <textarea class="kb-playbook-add__textarea" data-pb-edit-body rows="6">${escapeHtml(e.body || "")}</textarea>
+            <div class="kb-playbook-add__foot">
+              <span class="kb-playbook-add__msg" data-pb-edit-msg></span>
+              <span class="kb-playbook-add__actions">
+                <button type="button" class="btn btn--sm btn--ghost" data-pb-edit-cancel="${escapeHtml(e.id)}">Cancel</button>
+                <button type="button" class="btn btn--sm btn--primary btn--red" data-pb-edit-save="${escapeHtml(e.id)}">Save changes</button>
+              </span>
+            </div>
+          </div>`;
+        } else if (expanded) {
+          detail = `<div class="kb-playbook-entry__body kb-playbook-entry__body--full">${escapeHtml(e.body || "")}</div>`;
+        }
         return `
-        <div class="kb-playbook-entry">
-          <div class="kb-playbook-entry__head">
-            <span class="kb-playbook-entry__title">${escapeHtml(title)}</span>
-            ${remove}
+        <div class="kb-playbook-entry${isOpen ? " is-open" : ""}">
+          <div class="kb-playbook-entry__head kb-playbook-entry__head--clickable" data-pb-toggle="${escapeHtml(e.id)}" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
+            <svg class="kb-playbook-entry__chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            <span class="kb-playbook-entry__text">
+              <span class="kb-playbook-entry__title">${escapeHtml(title)}</span>
+              ${!isOpen && preview ? `<span class="kb-playbook-entry__preview">${escapeHtml(preview)}</span>` : ""}
+            </span>
+            ${actions}
           </div>
-          <div class="kb-playbook-entry__body">${escapeHtml(e.body || "")}</div>
+          ${detail}
         </div>`;
       }).join("");
     }
@@ -1414,9 +1784,56 @@
       renderHubspotTicketsStatus(data.hubspot_tickets_sync);
     }
 
+    // Track which sessions the user has already seen so brand-new ones can be
+    // highlighted in the table and counted on the sidebar badge.
+    let knownSessionIds = null;
+    let newSessionIds = new Set();
+    let sessionSeenTimer = null;
+
+    function updateSessionsBadge(count) {
+      const badge = $("#sessionsTabBadge");
+      if (!badge) return;
+      if (count > 0) {
+        badge.textContent = count > 99 ? "99+" : String(count);
+        badge.hidden = false;
+      } else {
+        badge.hidden = true;
+      }
+    }
+
+    function isOnSessionsTab() {
+      return !!document.querySelector('.tab.is-active[data-tab="sessions"]');
+    }
+
+    // After the user has had the highlights on screen for a bit, fade them out.
+    function scheduleSessionsSeen() {
+      if (sessionSeenTimer) clearTimeout(sessionSeenTimer);
+      sessionSeenTimer = setTimeout(() => {
+        sessionSeenTimer = null;
+        if (!newSessionIds.size) return;
+        newSessionIds.clear();
+        renderSessions(cachedCalls);
+      }, 12000);
+    }
+
     async function refreshSessions() {
       const data = await api("/calls?limit=100");
       cachedCalls = data.calls || [];
+      const ids = cachedCalls.map((c) => c.call_id).filter(Boolean);
+      if (knownSessionIds) {
+        const fresh = ids.filter((id) => !knownSessionIds.has(id));
+        if (fresh.length) {
+          fresh.forEach((id) => newSessionIds.add(id));
+          if (isOnSessionsTab()) {
+            showToast(`${fresh.length} new session${fresh.length === 1 ? "" : "s"} came in`);
+            scheduleSessionsSeen();
+          } else {
+            updateSessionsBadge(newSessionIds.size);
+          }
+        }
+      }
+      knownSessionIds = knownSessionIds || new Set();
+      ids.forEach((id) => knownSessionIds.add(id));
       renderSessions(cachedCalls);
     }
 
@@ -1442,26 +1859,47 @@
         loadTicketPins(),
       ]);
       renderKbStats(stats);
-      renderKnowledgeDocs(docs);
       kbPlaybookEditable = pb.editable !== false;
+      // Render the playbook first so the Sources tab can show its entry count.
       renderPlaybook(pb.entries || []);
+      renderKnowledgeDocs(docs);
       renderTicketPins();
     }
 
+    // Matches the HubSpot support-form categories exactly.
     const CSQ_CATEGORY_LABELS = {
-      login: "Login", billing: "Billing", integrations: "Integrations", dashboard: "Dashboard",
-      "facebook-aia": "Facebook AIA", marketposter: "MarketPoster", connect: "Connect",
-      leads: "Leads", account: "Account", cancellation: "Cancellation", training: "Training",
+      login: "Help with logging in",
+      "ai-responses": "AI responses",
+      "crm-leads": "CRM / Lead Integrations",
+      "facebook-aia": "Facebook / TikTok Advertising",
+      inventory: "Inventory",
+      "sales-demo": "Sales / Demo",
+      billing: "Billing",
+      cancellation: "Cancellation Request",
       other: "Other",
     };
 
-    function csqCategoryLabel(cat) {
-      return CSQ_CATEGORY_LABELS[(cat || "other").toLowerCase()] || (cat || "Other");
-    }
+    // Keys from the previous taxonomy or free-text labels on older sessions.
+    const CSQ_CATEGORY_ALIASES = {
+      leads: "crm-leads", integrations: "crm-leads", crm: "crm-leads",
+      marketposter: "facebook-aia",
+      dashboard: "other", training: "other", account: "other", connect: "other",
+      "ai responses": "ai-responses", "ai response": "ai-responses",
+      "help with logging in": "login",
+      "crm / lead integrations": "crm-leads",
+      "facebook / tiktok advertising": "facebook-aia",
+      "sales / demo": "sales-demo",
+      "cancellation request": "cancellation",
+    };
 
     function csqCategoryKey(cat) {
       const raw = (cat || "other").toLowerCase();
-      return CSQ_CATEGORY_LABELS[raw] ? raw : "other";
+      const key = CSQ_CATEGORY_ALIASES[raw] || raw;
+      return CSQ_CATEGORY_LABELS[key] ? key : "other";
+    }
+
+    function csqCategoryLabel(cat) {
+      return CSQ_CATEGORY_LABELS[csqCategoryKey(cat)];
     }
 
     let qaBoard = null;
@@ -1549,10 +1987,13 @@
 
       let sourcesHtml = "";
       if (hasDraft && Array.isArray(q.sources) && q.sources.length) {
-        const chips = q.sources
-          .map((s) => `<span class="qa-source-chip" title="${escapeHtml(s.doc_id || "")}">${escapeHtml(s.title || s.doc_id || "source")}</span>`)
-          .join("");
-        sourcesHtml = `<div class="qa-card__sources"><span class="qa-card__sources-label">Based on</span>${chips}</div>`;
+        const n = q.sources.length;
+        sourcesHtml = `<div class="qa-card__sources">
+          <button type="button" class="qa-sources-btn" title="See the knowledge sources this draft is based on">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Based on ${n} source${n === 1 ? "" : "s"}
+          </button>
+        </div>`;
       }
 
       let footBtns;
@@ -1574,7 +2015,7 @@
             <div class="qa-card__q">${escapeHtml(q.question)}</div>
             ${badge}
           </div>
-          <div class="qa-card__sub">${Number(q.count || 0).toLocaleString()} tickets &middot; ${q.share || 0}% of volume</div>
+          <div class="qa-card__sub">${Number(q.count || 0).toLocaleString()} tickets &middot; ${q.share || 0}% of volume${q.merged_count > 1 ? ` &middot; merged ${q.merged_count} similar` : ""}</div>
           <textarea class="qa-card__answer" rows="3" placeholder="Write the answer Customer Support gives for this…">${escapeHtml(q.answer || "")}</textarea>
           ${sourcesHtml}
           <div class="qa-card__foot">
@@ -1749,7 +2190,38 @@
       else if (target.closest(".qa-approve")) saveQaAnswer(card, target.closest(".qa-approve"));
       else if (target.closest(".qa-regen")) regenerateQaCard(card, target.closest(".qa-regen"));
       else if (target.closest(".qa-discard")) discardQaDraft(card, target.closest(".qa-discard"));
+      else if (target.closest(".qa-sources-btn")) openQaSources(card.dataset.qaKey);
     });
+
+    function openQaSources(key) {
+      const q = findQaQuestion(key);
+      const sources = (q && Array.isArray(q.sources)) ? q.sources : [];
+      if (!sources.length) return;
+      $("#qaSourcesTitle").textContent = `Based on ${sources.length} source${sources.length === 1 ? "" : "s"}`;
+      $("#qaSourcesSub").textContent = q.question || "";
+      $("#qaSourcesList").innerHTML = sources.map((s) => {
+        const title = s.title || s.doc_id || "source";
+        const id = s.doc_id || "";
+        return `<div class="qa-sources-modal__item">
+          <div class="qa-sources-modal__item-title">${escapeHtml(title)}</div>
+          ${id && id !== title ? `<div class="qa-sources-modal__item-id">${escapeHtml(id)}</div>` : ""}
+        </div>`;
+      }).join("");
+      const modal = $("#qaSourcesModal");
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeQaSources() {
+      const modal = $("#qaSourcesModal");
+      if (!modal) return;
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+    }
+
+    document.querySelectorAll("[data-qa-sources-close]").forEach((el) =>
+      el.addEventListener("click", closeQaSources)
+    );
 
     $("#btnQaGenerate")?.addEventListener("click", async () => {
       const btn = $("#btnQaGenerate");
@@ -1812,10 +2284,19 @@
           : (data.map_cache_hits || data.map_cache_misses)
             ? ` · AI cache ${Number(data.map_cache_hits || 0).toLocaleString()} hit / ${Number(data.map_cache_misses || 0).toLocaleString()} new`
             : "";
-        const customerInit = Number(data.customer_initiated || 0);
-        const initNote = customerInit
-          ? ` from <b>${customerInit.toLocaleString()}</b> customer-initiated tickets (of ${Number(data.total_tickets || 0).toLocaleString()} resolved)`
-          : ` from ${Number(data.total_tickets || 0).toLocaleString()} resolved`;
+        const totalTickets = Number(data.total_tickets || 0);
+        const resolvedTickets = Number(data.resolved_tickets || 0);
+        const openTickets = Number(data.open_tickets || 0);
+        const rankAll = (data.ranking_source || "all") === "all";
+        let initNote;
+        if (rankAll && (resolvedTickets || openTickets)) {
+          initNote = ` from <b>${totalTickets.toLocaleString()}</b> inbound tickets (${resolvedTickets.toLocaleString()} resolved + ${openTickets.toLocaleString()} open)`;
+        } else {
+          const customerInit = Number(data.customer_initiated || 0);
+          initNote = customerInit
+            ? ` from <b>${customerInit.toLocaleString()}</b> customer-initiated tickets (of ${totalTickets.toLocaleString()} resolved)`
+            : ` from ${totalTickets.toLocaleString()} resolved`;
+        }
         meta.innerHTML = `Last built ${escapeHtml(fmtTime(data.generated_at))} · <b>${Number(data.tickets_analyzed || 0).toLocaleString()}</b> customer support questions identified${initNote} · model ${escapeHtml(data.model || "—")}${escapeHtml(cacheNote)}`;
       } else {
         meta.textContent = "Not built yet. Click Build / Refresh to mine the top 100 customer questions from your synced HubSpot tickets.";
@@ -1840,19 +2321,35 @@
       const llmRejected = Number(data.llm_non_support_filtered || 0);
       const cacheHits = Number(data.map_cache_hits || 0);
       const cacheMisses = Number(data.map_cache_misses || 0);
-      const supportPct = customerInitiated ? Math.round((totalAnalyzed / customerInitiated) * 100) : 0;
+      const resolvedTickets = Number(data.resolved_tickets || 0);
+      const openTickets = Number(data.open_tickets || 0);
+      const rankAll = (data.ranking_source || "all") === "all";
+      const candidatePool = rankAll ? (resolvedTickets + openTickets) : customerInitiated;
+      const supportPct = candidatePool ? Math.round((totalAnalyzed / candidatePool) * 100) : 0;
       const catCounts = {};
       questions.forEach((q) => { const c = csqCategoryLabel(q.category); catCounts[c] = (catCounts[c] || 0) + Number(q.count || 0); });
       const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
-      statGrid.innerHTML = [
+      const cards = [
         { label: "Questions surfaced", value: questions.length, sub: "real customer topics" },
-        { label: "Customer-initiated", value: customerInitiated.toLocaleString(), sub: "inbound form / email / chat / call" },
+      ];
+      if (rankAll) {
+        cards.push(
+          { label: "Inbound tickets", value: (resolvedTickets + openTickets).toLocaleString(), sub: "ranked demand (open + resolved)" },
+          { label: "Open tickets", value: openTickets.toLocaleString(), sub: "unresolved — counted in ranking" },
+        );
+      } else {
+        cards.push(
+          { label: "Customer-initiated", value: customerInitiated.toLocaleString(), sub: "inbound form / email / chat / call" },
+        );
+      }
+      cards.push(
         { label: "Excluded", value: excludedInternal.toLocaleString(), sub: "internal: reviews, sales, outreach" },
-        { label: "Support tickets", value: totalAnalyzed.toLocaleString(), sub: `${supportPct}% of customer-initiated` },
+        { label: "Support tickets", value: totalAnalyzed.toLocaleString(), sub: `${supportPct}% of inbound pool` },
         { label: "LLM rejected", value: llmRejected.toLocaleString(), sub: "not customer questions" },
         { label: "AI cache", value: data.cache_full_hit ? "Reused" : cacheHits.toLocaleString(), sub: data.cache_full_hit ? "no new OpenAI map calls" : `${cacheMisses.toLocaleString()} new` },
         { label: "Biggest category", value: topCat ? topCat[0] : "—", sub: topCat ? topCat[1].toLocaleString() + " tickets" : "" },
-      ].map((s) => `
+      );
+      statGrid.innerHTML = cards.map((s) => `
         <div class="stat">
           <div class="stat__label">${escapeHtml(s.label)}</div>
           <div class="stat__value">${escapeHtml(String(s.value))}</div>
@@ -2005,9 +2502,12 @@
     const CAL_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const CAL_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     let calCursor = startOfMonth(new Date());
+    let calSelected = startOfDay(new Date());
     let calView = "month";
     let calStatus = "";
     let calAppointments = [];
+    const ICON_CAL = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>';
+    const ICON_PHONE_SM = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3h3l1.5 5-2 1.5a13 13 0 0 0 5.5 5.5L16 18l5 1.5v3a1.5 1.5 0 0 1-1.7 1.5A18 18 0 0 1 3 7.7 1.5 1.5 0 0 1 4.5 6Z"/></svg>';
 
     function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
     function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
@@ -2095,6 +2595,12 @@
       </button>`;
     }
 
+    function apptsForDay(d) {
+      return calAppointments
+        .filter((a) => { const x = apptDate(a); return x && sameDay(x, d); })
+        .sort((a, b) => apptDate(a) - apptDate(b));
+    }
+
     function renderCalMonth() {
       $("#calWeekdays").innerHTML = CAL_WEEKDAYS.map((d) => `<div class="cal-weekday">${d}</div>`).join("");
       const first = startOfMonth(calCursor);
@@ -2117,14 +2623,59 @@
         const items = (byDay.get(key) || []).sort((a, b) => apptDate(a) - apptDate(b));
         const outside = day.getMonth() !== calCursor.getMonth();
         const isToday = sameDay(day, today);
-        const chips = items.slice(0, 3).map(calChipHtml).join("");
-        const more = items.length > 3 ? `<span class="cal-more">+${items.length - 3} more</span>` : "";
-        cells += `<div class="cal-day${outside ? " cal-day--out" : ""}${isToday ? " cal-day--today" : ""}" data-cal-date="${toDateInputValue(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0))}">
-          <div class="cal-day__num">${day.getDate()}</div>
+        const isSelected = sameDay(day, calSelected);
+        const chips = items.slice(0, 2).map(calChipHtml).join("");
+        const more = items.length > 2 ? `<button class="cal-more" type="button" data-cal-more="1">+${items.length - 2} more</button>` : "";
+        const count = items.length ? `<span class="cal-day__count" aria-label="${items.length} callbacks">${items.length}</span>` : "";
+        const cls = ["cal-day"];
+        if (outside) cls.push("cal-day--out");
+        if (isToday) cls.push("cal-day--today");
+        if (isSelected) cls.push("cal-day--selected");
+        if (items.length) cls.push("cal-day--has");
+        cells += `<div class="${cls.join(" ")}" role="button" tabindex="0" aria-pressed="${isSelected}" data-cal-key="${day.getFullYear()}-${day.getMonth()}-${day.getDate()}">
+          <div class="cal-day__top"><span class="cal-day__num">${day.getDate()}</span>${count}</div>
           <div class="cal-day__items">${chips}${more}</div>
         </div>`;
       }
       $("#calGrid").innerHTML = cells;
+      renderCalAgenda();
+    }
+
+    function renderCalAgenda() {
+      const sel = calSelected;
+      const today = startOfDay(new Date());
+      const items = apptsForDay(sel);
+      const isToday = sameDay(sel, today);
+      const weekday = sel.toLocaleDateString(undefined, { weekday: "long" });
+      const datePart = sel.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+      $("#calAgendaTitle").innerHTML = `${isToday ? `<span class="cal-agenda__today">Today</span>` : escapeHtml(weekday)} <span class="cal-agenda__date">${escapeHtml(datePart)}</span>`;
+      $("#calAgendaSub").textContent = items.length
+        ? `${items.length} callback${items.length === 1 ? "" : "s"} scheduled`
+        : "No callbacks scheduled";
+      if (!items.length) {
+        $("#calAgendaBody").innerHTML = `<div class="cal-agenda__empty">
+          <div class="cal-agenda__empty-icon" aria-hidden="true">${ICON_CAL}</div>
+          <p>Nothing booked for this day.</p>
+          <button class="btn btn--sm btn--red" type="button" id="calAgendaEmptyAdd">+ Schedule a callback</button>
+        </div>`;
+        return;
+      }
+      $("#calAgendaBody").innerHTML = items.map((a) => {
+        const d = apptDate(a);
+        const phone = a.phone ? `<span class="cal-agenda__meta">${ICON_PHONE_SM}${escapeHtml(a.phone)}</span>` : "";
+        return `<button class="cal-agenda__row cal-agenda__row--${a.status}" type="button" data-appt-id="${a.id}">
+          <span class="cal-agenda__time">
+            <span class="cal-agenda__hour">${escapeHtml(d ? fmtApptTime(d) : "—")}</span>
+            <span class="cal-agenda__dur">${a.duration_min || 30}m</span>
+          </span>
+          <span class="cal-agenda__info">
+            <span class="cal-agenda__contact">${escapeHtml(calContactLabel(a))}</span>
+            <span class="cal-agenda__reason">${escapeHtml(a.reason || "No reason given")}</span>
+            ${phone}
+          </span>
+          <span class="status-pill cal-pill--${a.status}">${escapeHtml(CAL_STATUS_LABELS[a.status] || a.status)}</span>
+        </button>`;
+      }).join("");
     }
 
     function renderCalList() {
@@ -2250,9 +2801,27 @@
       }
     }
 
-    $("#calPrev")?.addEventListener("click", () => { calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() - 1, 1); renderCalendar(); });
-    $("#calNext")?.addEventListener("click", () => { calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() + 1, 1); renderCalendar(); });
-    $("#calToday")?.addEventListener("click", () => { calCursor = startOfMonth(new Date()); renderCalendar(); });
+    function syncSelectedToMonth() {
+      const today = new Date();
+      if (today.getFullYear() === calCursor.getFullYear() && today.getMonth() === calCursor.getMonth()) {
+        calSelected = startOfDay(today);
+      } else {
+        calSelected = new Date(calCursor.getFullYear(), calCursor.getMonth(), 1);
+      }
+    }
+    function selectCalDay(key) {
+      if (!key) return;
+      const [y, m, d] = key.split("-").map(Number);
+      calSelected = new Date(y, m, d);
+      renderCalMonth();
+    }
+    function addForSelectedDay() {
+      const d = calSelected;
+      openApptModal(null, toDateInputValue(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9, 0)));
+    }
+    $("#calPrev")?.addEventListener("click", () => { calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() - 1, 1); syncSelectedToMonth(); renderCalendar(); });
+    $("#calNext")?.addEventListener("click", () => { calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() + 1, 1); syncSelectedToMonth(); renderCalendar(); });
+    $("#calToday")?.addEventListener("click", () => { calCursor = startOfMonth(new Date()); syncSelectedToMonth(); renderCalendar(); });
     document.querySelectorAll(".cal-view").forEach((b) => b.addEventListener("click", () => { calView = b.dataset.calView; renderCalendar(); }));
     $("#calStatusFilter")?.addEventListener("change", (e) => { calStatus = e.target.value; refreshCalendar(); });
     $("#calNew")?.addEventListener("click", () => openApptModal(null));
@@ -2264,11 +2833,24 @@
       const chip = e.target.closest(".cal-chip");
       if (chip) {
         const a = calAppointments.find((x) => String(x.id) === chip.dataset.apptId);
-        if (a) openApptModal(a);
+        if (a) { const d = apptDate(a); if (d) calSelected = startOfDay(d); openApptModal(a); }
         return;
       }
       const day = e.target.closest(".cal-day");
-      if (day) openApptModal(null, day.dataset.calDate);
+      if (day) selectCalDay(day.dataset.calKey);
+    });
+    $("#calGrid")?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const day = e.target.closest(".cal-day");
+      if (day) { e.preventDefault(); selectCalDay(day.dataset.calKey); }
+    });
+    $("#calAgendaAdd")?.addEventListener("click", addForSelectedDay);
+    $("#calAgendaBody")?.addEventListener("click", (e) => {
+      if (e.target.closest("#calAgendaEmptyAdd")) { addForSelectedDay(); return; }
+      const row = e.target.closest(".cal-agenda__row");
+      if (!row) return;
+      const a = calAppointments.find((x) => String(x.id) === row.dataset.apptId);
+      if (a) openApptModal(a);
     });
     $("#calList")?.addEventListener("click", (e) => {
       const row = e.target.closest(".cal-list__row");
@@ -2278,8 +2860,270 @@
     });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#apptModal").hidden) closeApptModal(); });
 
+    // ── Billing & Cancellations ──────────────────────────────────────────────
+    let billingTickets = [];
+    let billingFilter = "all";
+    let billingSearchQuery = "";
+    let billingSearchTimer = null;
+
+    const ICON_MAIL = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>';
+    const ICON_PHONE = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3h3l1.5 5-2 1.5a13 13 0 0 0 5.5 5.5L16 18l5 1.5v3a1.5 1.5 0 0 1-1.7 1.5A18 18 0 0 1 3 7.7 1.5 1.5 0 0 1 4.5 6Z"/></svg>';
+    const ICON_BUILDING = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M14 9h4a2 2 0 0 1 2 2v10"/><path d="M8 7h2M8 11h2M8 15h2"/><path d="M3 21h18"/></svg>';
+    const ICON_CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
+
+    function billingCategoryLabel(cat) {
+      const c = String(cat || "").toLowerCase();
+      if (c === "billing") return "Billing";
+      if (c === "cancellation") return "Cancellation";
+      return cat || "Other";
+    }
+
+    function updateBillingBadge(openCount) {
+      const badge = $("#billingTabBadge");
+      if (!badge) return;
+      if (openCount > 0) {
+        badge.textContent = openCount > 99 ? "99+" : String(openCount);
+        badge.hidden = false;
+      } else {
+        badge.hidden = true;
+      }
+    }
+
+    async function refreshBilling() {
+      const list = $("#billingList");
+      try {
+        const data = await api("/tickets/billing");
+        if (data.ok === false) throw new Error(data.error || "Could not load requests.");
+        billingTickets = data.tickets || [];
+        updateBillingBadge(Number(data.open || 0));
+        renderBilling();
+      } catch (ex) {
+        if (list) list.innerHTML = `<div class="empty">${escapeHtml(ex.message || "Could not load requests.")}</div>`;
+      }
+    }
+
+    function billingMatchesFilter(t) {
+      const cat = String(t.issue_category || "").toLowerCase();
+      if (billingFilter === "billing") return cat === "billing";
+      if (billingFilter === "cancellation") return cat === "cancellation";
+      if (billingFilter === "open") return !t.resolved;
+      if (billingFilter === "resolved") return !!t.resolved;
+      return true;
+    }
+
+    function billingMatchesSearch(t) {
+      if (!billingSearchQuery) return true;
+      const q = billingSearchQuery.toLowerCase();
+      return [t.dealership, t.contact_name, t.first_name, t.last_name, t.email, t.phone, t.message]
+        .filter(Boolean).join(" ").toLowerCase().includes(q);
+    }
+
+    function renderBilling() {
+      const list = $("#billingList");
+      const statGrid = $("#billingStatGrid");
+      if (!list) return;
+
+      const all = billingTickets;
+      const counts = {
+        all: all.length,
+        billing: all.filter((t) => String(t.issue_category || "").toLowerCase() === "billing").length,
+        cancellation: all.filter((t) => String(t.issue_category || "").toLowerCase() === "cancellation").length,
+        open: all.filter((t) => !t.resolved).length,
+        resolved: all.filter((t) => !!t.resolved).length,
+      };
+      $("#bCntAll").textContent = counts.all;
+      $("#bCntBilling").textContent = counts.billing;
+      $("#bCntCancel").textContent = counts.cancellation;
+      $("#bCntOpen").textContent = counts.open;
+      $("#bCntDone").textContent = counts.resolved;
+
+      if (statGrid) {
+        statGrid.innerHTML = [
+          { label: "Open requests", value: counts.open, accent: counts.open > 0 },
+          { label: "Billing", value: counts.billing },
+          { label: "Cancellations", value: counts.cancellation },
+          { label: "Resolved", value: counts.resolved },
+        ].map((s) => `
+          <div class="stat${s.accent ? " stat--accent" : ""}">
+            <div class="stat__label">${escapeHtml(s.label)}</div>
+            <div class="stat__value">${Number(s.value).toLocaleString()}</div>
+          </div>`).join("");
+      }
+
+      const rows = all.filter((t) => billingMatchesFilter(t) && billingMatchesSearch(t));
+
+      if (!all.length) {
+        list.innerHTML = '<div class="empty">No billing or cancellation requests yet. When Hannah handles one, it shows up here automatically.</div>';
+        return;
+      }
+      if (!rows.length) {
+        list.innerHTML = '<div class="empty">No requests match this filter.</div>';
+        return;
+      }
+      list.innerHTML = rows.map(billingCardHtml).join("");
+    }
+
+    function billingCardHtml(t) {
+      const cat = String(t.issue_category || "").toLowerCase();
+      const catLabel = billingCategoryLabel(cat);
+      const isCallback = t.kind === "callback";
+      const isSession = t.kind === "session";
+      const contact = (t.contact_name || `${t.first_name || ""} ${t.last_name || ""}`).trim() || "—";
+      const when = fmtTime(t.created_at);
+      const resolved = !!t.resolved;
+      const statusPill = resolved
+        ? '<span class="status-pill status-pill--resolved"><span class="status-pill__dot"></span>Done</span>'
+        : '<span class="status-pill status-pill--open"><span class="status-pill__dot"></span>Open</span>';
+      const sourcePill = isCallback
+        ? '<span class="billing-tag billing-tag--callback">Scheduled callback</span>'
+        : isSession
+        ? '<span class="billing-tag billing-tag--needsticket" title="Hannah handled this in chat but did not file a ticket — review the transcript and follow up.">Chat &middot; needs ticket</span>'
+        : "";
+      const email = t.email ? `<a class="billing-contact__link" href="mailto:${escapeHtml(t.email)}">${ICON_MAIL}<span>${escapeHtml(t.email)}</span></a>` : "";
+      const phone = t.phone ? `<a class="billing-contact__link" href="tel:${escapeHtml(t.phone)}">${ICON_PHONE}<span>${escapeHtml(t.phone)}</span></a>` : "";
+      const hubspot = t.ticket_url
+        ? `<a class="ticket-link" href="${escapeHtml(t.ticket_url)}" target="_blank" rel="noopener">HubSpot${ICON_EXTERNAL}</a>`
+        : "";
+      const openChat = isSession && t.session_id
+        ? `<button class="btn btn--sm btn--ghost" type="button" data-open-session="${escapeHtml(t.session_id)}">Open chat</button>`
+        : "";
+      const callbackWhen = isCallback && (t.requested_label || t.requested_at)
+        ? ` &middot; Callback: ${escapeHtml(t.requested_label || fmtTime(t.requested_at))}`
+        : "";
+
+      return `
+        <div class="billing-card${resolved ? " is-resolved" : ""}" data-billing-id="${escapeHtml(String(t.id))}">
+          <div class="billing-card__head">
+            <div class="billing-card__title">
+              <span class="billing-card__icon" aria-hidden="true">${ICON_BUILDING}</span>
+              <span class="billing-card__dealer">${escapeHtml(t.dealership || "Unknown dealership")}</span>
+            </div>
+            <div class="billing-card__tags">
+              <span class="billing-tag billing-tag--${escapeHtml(cat || "other")}">${escapeHtml(catLabel)}</span>
+              ${sourcePill}
+              ${statusPill}
+            </div>
+          </div>
+          <div class="billing-card__contact">
+            <span class="billing-contact__name">${escapeHtml(contact)}</span>
+            ${email}
+            ${phone}
+          </div>
+          ${t.message ? `<div class="billing-card__summary">${escapeHtml(t.message)}</div>` : ""}
+          <div class="billing-card__foot">
+            <span class="billing-card__meta">${escapeHtml(when)}${t.channel ? " &middot; " + escapeHtml(channelLabel(t.channel)) : ""}${callbackWhen}</span>
+            <div class="billing-card__actions">
+              ${openChat}
+              ${hubspot}
+              <button class="btn btn--sm ${resolved ? "btn--ghost" : "btn--primary btn--red"} billing-resolve" type="button" data-resolved="${resolved ? "0" : "1"}">
+                ${resolved ? "Reopen" : `<span class="billing-resolve__icon">${ICON_CHECK}</span>Mark done`}
+              </button>
+              <button class="btn btn--sm btn--ghost billing-dismiss" type="button" title="Remove this card from the list" aria-label="Remove from list">Remove</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    async function toggleBillingResolved(card, btn) {
+      const id = card.dataset.billingId;
+      const resolved = btn.dataset.resolved === "1";
+      const t = billingTickets.find((x) => String(x.id) === String(id));
+      btn.disabled = true;
+      try {
+        if (t && t.kind === "callback") {
+          // Callbacks live in the appointments table — update their status instead.
+          const res = await api(`/appointments/${encodeURIComponent(t.appointment_id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: resolved ? "completed" : "requested" }),
+          });
+          if (res.ok === false) throw new Error(res.error || "Could not update.");
+          if (t) { t.resolved = resolved; t.status = resolved ? "completed" : "requested"; }
+        } else if (t && t.kind === "session") {
+          // Safety-net session cards resolve against the session row.
+          const res = await api(`/sessions/${encodeURIComponent(t.session_id)}/resolve`, {
+            method: "POST",
+            body: JSON.stringify({ resolved }),
+          });
+          if (res.ok === false) throw new Error(res.error || "Could not update.");
+          if (t) t.resolved = resolved;
+        } else {
+          const res = await api(`/tickets/${encodeURIComponent(id)}/resolve`, {
+            method: "POST",
+            body: JSON.stringify({ resolved }),
+          });
+          if (res.ok === false) throw new Error(res.error || "Could not update.");
+          if (t) t.resolved = resolved;
+        }
+        updateBillingBadge(billingTickets.filter((x) => !x.resolved).length);
+        renderBilling();
+        showToast(resolved ? "Marked as done" : "Reopened");
+      } catch (ex) {
+        btn.disabled = false;
+        showToast(ex.message || "Could not update request.");
+      }
+    }
+
+    document.querySelectorAll("[data-billing-filter]").forEach((b) => {
+      b.addEventListener("click", () => {
+        document.querySelectorAll("[data-billing-filter]").forEach((x) => x.classList.remove("is-active"));
+        b.classList.add("is-active");
+        billingFilter = b.dataset.billingFilter;
+        renderBilling();
+      });
+    });
+
+    $("#billingSearch")?.addEventListener("input", (event) => {
+      const value = event.target.value.trim();
+      if (billingSearchTimer) clearTimeout(billingSearchTimer);
+      billingSearchTimer = setTimeout(() => {
+        billingSearchQuery = value;
+        renderBilling();
+      }, 200);
+    });
+
+    $("#btnBillingRefresh")?.addEventListener("click", () => { refreshBilling().catch(() => {}); });
+
+    $("#billingList")?.addEventListener("click", (event) => {
+      const openBtn = event.target.closest("[data-open-session]");
+      if (openBtn) {
+        openSessionDetail(openBtn.dataset.openSession);
+        return;
+      }
+      const dismissBtn = event.target.closest(".billing-dismiss");
+      if (dismissBtn) {
+        const card = dismissBtn.closest(".billing-card");
+        if (card) dismissBillingCard(card, dismissBtn);
+        return;
+      }
+      const btn = event.target.closest(".billing-resolve");
+      if (!btn) return;
+      const card = btn.closest(".billing-card");
+      if (card) toggleBillingResolved(card, btn);
+    });
+
+    async function dismissBillingCard(card, btn) {
+      const id = card.dataset.billingId;
+      if (!id) return;
+      if (!confirm("Remove this request from the list? This only hides it here — it won't delete the HubSpot ticket or session transcript.")) return;
+      btn.disabled = true;
+      try {
+        const res = await api("/tickets/billing/dismiss", {
+          method: "POST",
+          body: JSON.stringify({ id }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Could not remove.");
+        billingTickets = billingTickets.filter((x) => String(x.id) !== String(id));
+        updateBillingBadge(billingTickets.filter((x) => !x.resolved).length);
+        renderBilling();
+        showToast("Removed from list");
+      } catch (ex) {
+        btn.disabled = false;
+        showToast(ex.message || "Could not remove request.");
+      }
+    }
+
     async function refreshAll() {
-      await Promise.all([refreshOverview(), refreshSessions(), refreshKnowledge(), refreshSettings(), refreshCsQuestions()]);
+      await Promise.all([refreshOverview(), refreshSessions(), refreshKnowledge(), refreshSettings(), refreshCsQuestions(), refreshBilling().catch(() => {})]);
     }
 
     $("#loginForm").addEventListener("submit", async (e) => {
@@ -2311,9 +3155,15 @@
         document.querySelectorAll(".panel").forEach((p) => p.classList.remove("is-active"));
         $("#panel-" + btn.dataset.tab).classList.add("is-active");
         $("#pageTitle").textContent = PAGE_TITLES[btn.dataset.tab] || btn.dataset.tab;
+        if (btn.dataset.tab === "sessions") {
+          updateSessionsBadge(0);
+          if (newSessionIds.size) scheduleSessionsSeen();
+          refreshSessions().catch(() => {});
+        }
         if (btn.dataset.tab === "cs-questions") refreshCsQuestions().catch(() => {});
         if (btn.dataset.tab === "calendar") refreshCalendar().catch(() => {});
         if (btn.dataset.tab === "qa") refreshQa().catch(() => {});
+        if (btn.dataset.tab === "billing") refreshBilling().catch(() => {});
       });
     });
 
@@ -2468,13 +3318,61 @@
 
     $("#sessionSearch")?.addEventListener("input", () => renderSessions(cachedCalls));
 
+    // Clear all sessions — open/close confirm modal + perform the delete.
+    function openClearSessions() {
+      const modal = $("#clearSessionsModal");
+      if (!modal) return;
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+    }
+    function closeClearSessions() {
+      const modal = $("#clearSessionsModal");
+      if (!modal) return;
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+    }
+    $("#btnClearSessions")?.addEventListener("click", openClearSessions);
+    document.querySelectorAll("[data-clear-close]").forEach((el) =>
+      el.addEventListener("click", closeClearSessions)
+    );
+    $("#btnClearSessionsConfirm")?.addEventListener("click", async () => {
+      const btn = $("#btnClearSessionsConfirm");
+      if (btn) btn.disabled = true;
+      try {
+        const res = await api("/sessions", { method: "DELETE" });
+        closeClearSessions();
+        const n = res?.deleted ?? 0;
+        showToast(`Cleared ${n} session${n === 1 ? "" : "s"}`);
+        await refreshSessions();
+        await refreshOverview().catch(() => {});
+      } catch (err) {
+        showToast(err.message || "Could not clear sessions");
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+
     $("#sessionDetailClose")?.addEventListener("click", closeSessionDetail);
     $("#sessionDetailBackdrop")?.addEventListener("click", closeSessionDetail);
+    $("#sessionTranscriptCopy")?.addEventListener("click", copySessionTranscript);
+    $("#sessionDetailTranscript")?.addEventListener("click", (e) => {
+      const editBtn = e.target.closest("[data-turn-edit]");
+      if (editBtn) { openTurnEditor(Number(editBtn.dataset.turnEdit)); return; }
+      const pickBtn = e.target.closest("[data-variant-pick]");
+      if (pickBtn) { pickTurnVariant(pickBtn); return; }
+      const regenBtn = e.target.closest("[data-turn-regen]");
+      if (regenBtn) { regenerateTurnVariations(Number(regenBtn.dataset.turnRegen), regenBtn); return; }
+      if (e.target.closest("[data-turn-cancel]")) { closeTurnEditors(); return; }
+      const saveBtn = e.target.closest("[data-turn-save]");
+      if (saveBtn) saveTurnCorrection(Number(saveBtn.dataset.turnSave), saveBtn);
+    });
 
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         closeKbDocPreview();
         closeSessionDetail();
+        closeClearSessions();
+        closeQaSources();
       }
     });
 
@@ -2984,6 +3882,10 @@
       const pb = await api("/knowledge/playbook");
       kbPlaybookEditable = pb.editable !== false;
       renderPlaybook(pb.entries || []);
+      // Keep the Sources tab's Playbook count in sync with the entry count.
+      if (cachedKbDocs.length) {
+        renderKnowledgeDocs({ docs: cachedKbDocs, group_totals: cachedGroupTotals, ticket_total: cachedTicketTotal });
+      }
     }
 
     async function removePlaybookEntry(entryId, btn) {
@@ -3048,11 +3950,78 @@
       }
     }
 
+    async function savePlaybookEdit(entryId, btn) {
+      const editor = $(`[data-pb-editor="${CSS.escape(entryId)}"]`);
+      if (!editor) return;
+      const titleEl = editor.querySelector("[data-pb-edit-title]");
+      const bodyEl = editor.querySelector("[data-pb-edit-body]");
+      const msgEl = editor.querySelector("[data-pb-edit-msg]");
+      const title = (titleEl?.value || "").trim();
+      const content = (bodyEl?.value || "").trim();
+      const setMsg = (text) => { if (msgEl) { msgEl.textContent = text || ""; msgEl.className = "kb-playbook-add__msg" + (text ? " is-error" : ""); } };
+      if (!title) { setMsg("Enter a question or topic."); titleEl?.focus(); return; }
+      if (!content) { setMsg("Enter the answer Hannah should give."); bodyEl?.focus(); return; }
+      const prev = btn ? btn.textContent : "";
+      if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+      try {
+        const res = await api(`/knowledge/playbook/entry/${encodeURIComponent(entryId)}`, {
+          method: "PUT",
+          body: JSON.stringify({ title, content }),
+        });
+        if (res.ok === false) throw new Error(res.error || "Could not save changes.");
+        kbPlaybookEditingId = null;
+        kbPlaybookExpanded.delete(entryId);
+        if (res.id) kbPlaybookExpanded.add(res.id);
+        await reloadPlaybook();
+        showToast("Playbook updated — Hannah will use the new answer.");
+      } catch (ex) {
+        if (btn) { btn.disabled = false; btn.textContent = prev; }
+        setMsg(ex.message || "Could not save changes.");
+      }
+    }
+
     $("#kbPlaybookList")?.addEventListener("click", (event) => {
+      if (event.target.closest("[data-pb-add]")) { togglePlaybookAddForm(true); return; }
       const rm = event.target.closest("[data-pb-remove]");
-      if (rm && rm.dataset.pbRemove) removePlaybookEntry(rm.dataset.pbRemove, rm);
+      if (rm && rm.dataset.pbRemove) { removePlaybookEntry(rm.dataset.pbRemove, rm); return; }
+      const ed = event.target.closest("[data-pb-edit]");
+      if (ed && ed.dataset.pbEdit) {
+        kbPlaybookEditingId = ed.dataset.pbEdit;
+        renderPlaybook(kbPlaybookEntries);
+        $(`[data-pb-editor="${CSS.escape(kbPlaybookEditingId)}"]`)?.querySelector("[data-pb-edit-title]")?.focus();
+        return;
+      }
+      const cancel = event.target.closest("[data-pb-edit-cancel]");
+      if (cancel) {
+        kbPlaybookEditingId = null;
+        renderPlaybook(kbPlaybookEntries);
+        return;
+      }
+      const save = event.target.closest("[data-pb-edit-save]");
+      if (save && save.dataset.pbEditSave) { savePlaybookEdit(save.dataset.pbEditSave, save); return; }
+      // Ignore clicks inside the inline editor (typing, selecting text).
+      if (event.target.closest("[data-pb-editor]")) return;
+      const head = event.target.closest("[data-pb-toggle]");
+      if (head && head.dataset.pbToggle) {
+        const id = head.dataset.pbToggle;
+        if (kbPlaybookEditingId === id) return;
+        if (kbPlaybookExpanded.has(id)) kbPlaybookExpanded.delete(id);
+        else kbPlaybookExpanded.add(id);
+        renderPlaybook(kbPlaybookEntries);
+      }
     });
-    $("#kbPlaybookAddToggle")?.addEventListener("click", () => togglePlaybookAddForm());
+    $("#kbPlaybookList")?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const head = event.target.closest("[data-pb-toggle]");
+      if (!head || event.target.closest("button, input, textarea")) return;
+      event.preventDefault();
+      head.click();
+    });
+    $("#btnKbPlaybookAdd")?.addEventListener("click", () => togglePlaybookAddForm());
+    $("#kbPlaybookSearch")?.addEventListener("input", (event) => {
+      kbPlaybookQuery = event.target.value || "";
+      renderPlaybook(kbPlaybookEntries);
+    });
     $("#kbPlaybookAddCancel")?.addEventListener("click", () => togglePlaybookAddForm(false));
     $("#kbPlaybookAddForm")?.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -3064,9 +4033,12 @@
       if (!host) return;
       const note = $("#kbTicketPinsNote");
       const list = kbTicketPins || [];
-      if (note) note.textContent = list.length ? `${list.length} pinned ticket${list.length === 1 ? "" : "s"}` : "No pinned tickets yet.";
+      if (note) note.textContent = `${list.length} pinned`;
       if (!list.length) {
-        host.innerHTML = '<div class="kb-empty">Pin a ticket from the test results to force Hannah to use it for a question.</div>';
+        host.innerHTML = `
+        <div class="pb-empty pb-empty--compact">
+          <div class="pb-empty__text">Nothing pinned yet. In <strong>Test AI</strong>, pin a ticket from the results to make Hannah always use it.</div>
+        </div>`;
         return;
       }
       host.innerHTML = list.map((p) => {
@@ -3211,7 +4183,10 @@
     }
 
     setInterval(() => {
-      if (token) refreshOverview().catch(() => {});
+      if (token) {
+        refreshOverview().catch(() => {});
+        refreshSessions().catch(() => {});
+      }
     }, 15000);
   </script>
 </body>

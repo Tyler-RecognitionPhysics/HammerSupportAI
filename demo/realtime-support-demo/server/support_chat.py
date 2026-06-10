@@ -4,18 +4,90 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any, Sequence
 
 import httpx
 
 from support_instructions import build_support_chat_prompt
+from support_ticket_service import ticket_creation_enabled
 from support_tools import (
     SupportSession,
     SupportToolExecutor,
+    _NO_TIME_GUARD_RESULT,
+    append_callback_time_prompt,
+    customer_stated_a_time,
     format_support_knowledge_result,
+    redact_support_contacts,
+    should_offer_callback_time,
     support_tool_definitions,
 )
 from wiki_retrieval import Chunk
+
+# Detect billing/cancellation intent so we can guarantee a ticket gets created
+# (the model otherwise sometimes just *says* it escalated without calling the tool).
+_BILLING_CANCEL_INTENT_RE = re.compile(
+    r"\b(cancel\w*|cancell\w*|pause|downgrade|terminat\w*|discontinu\w*|unsubscrib\w*|"
+    r"close (?:my |the )?account|stop (?:my |the )?(?:service|subscription|account)|"
+    r"billing|invoice\w*|charge\w*|overcharg\w*|refund\w*|payment|double[- ]?charged)\b",
+    re.IGNORECASE,
+)
+
+_TICKET_ENFORCE_NUDGE = (
+    "Reminder: this conversation is a billing or cancellation request. You have NOT yet "
+    "called create_support_ticket. If you already have the dealership name, the customer's "
+    "name, and the email on their Hammer account, call create_support_ticket now with "
+    "issue_category set to 'billing' or 'cancellation' and resolved=false (a phone number is "
+    "optional — do not wait for it). If any required field is still missing, ask the customer "
+    "for just that missing field — and never tell them to email anyone or that the request has "
+    "been logged or that someone will reach out until the ticket has actually been created."
+)
+
+# Facebook / advertising questions are never answered by the AI — they route to a
+# human via a ticket (and an optional scheduled callback).
+_FACEBOOK_ADS_INTENT_RE = re.compile(
+    r"\b(facebook|fb|meta|instagram|insta|marketplace|"
+    r"(?:\w+\s+)?ads?|advertis\w*|ad\s+account|ad\s+campaign\w*|campaign\w*|"
+    r"aia|automated\s+inventory|boosted?\s+post\w*|ad\s+spend|ad\s+budget)\b",
+    re.IGNORECASE,
+)
+
+_FACEBOOK_ENFORCE_NUDGE = (
+    "Reminder: this is a Facebook/advertising question. Do NOT troubleshoot it or list things "
+    "to check — our ads team handles these. You have NOT yet called create_support_ticket. If "
+    "you have the dealership name, the customer's name, and the email on their Hammer account, "
+    "call create_support_ticket now with issue_category='facebook-aia', resolved=false, and an "
+    "issue_summary of what they reported. If a required field is missing, ask for just that one "
+    "field. Then ask if they have a preferred day/time for our team to reach out, and if they "
+    "give one, call schedule_callback so it lands on the calendar. Never claim it has been "
+    "logged or that someone will reach out until create_support_ticket has actually run."
+)
+
+# Deterministic, never-troubleshoot reply for Facebook/ad questions. gpt-4o-mini
+# will happily generate generic ad "things to check" from its own training data
+# even when the prompt forbids it, so for ad intent we never surface the model's
+# free-form text until a ticket actually exists — we route to a human instead.
+_FACEBOOK_ROUTING_REPLY = (
+    "Anything with your Facebook or Meta advertising is handled by our ads specialists, "
+    "so I won't try to troubleshoot it here — I'll get it straight to the right person. "
+    "To open that for you, could you share your dealership name, your first and last name, "
+    "and the email on your Hammer account? It also helps to know a day and time that work "
+    "best for a callback, and I'll get you on the calendar."
+)
+
+
+def _is_billing_cancel_intent(messages: list[dict[str, str]]) -> bool:
+    for m in messages:
+        if m.get("role") == "user" and _BILLING_CANCEL_INTENT_RE.search(str(m.get("content") or "")):
+            return True
+    return False
+
+
+def _is_facebook_ads_intent(messages: list[dict[str, str]]) -> bool:
+    for m in messages:
+        if m.get("role") == "user" and _FACEBOOK_ADS_INTENT_RE.search(str(m.get("content") or "")):
+            return True
+    return False
 
 
 def _chat_model() -> str:
@@ -73,8 +145,15 @@ async def complete_support_chat(
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY not configured")
 
+    billing_cancel_intent = _is_billing_cancel_intent(messages)
+    facebook_ads_intent = _is_facebook_ads_intent(messages)
+    route_facebook = facebook_ads_intent and ticket_creation_enabled()
+
     last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
-    wiki_context = _support_context(retriever, last_user) if last_user.strip() else ""
+    # For Facebook/ad questions we route to a human instead of answering, so we do
+    # NOT feed troubleshooting KB into the prompt — otherwise the model grounds in
+    # it and lists "things to check" even though it was told not to.
+    wiki_context = "" if route_facebook else (_support_context(retriever, last_user) if last_user.strip() else "")
     system = build_support_chat_prompt(wiki_context=wiki_context)
 
     openai_messages: list[dict] = [{"role": "system", "content": system}]
@@ -84,13 +163,20 @@ async def complete_support_chat(
         if role in ("user", "assistant") and content:
             openai_messages.append({"role": role, "content": content})
 
+    # Inject the routing directive UP FRONT (before the first model turn) so the
+    # model never produces a troubleshooting answer it then has to walk back.
+    if route_facebook:
+        openai_messages.append({"role": "system", "content": _FACEBOOK_ENFORCE_NUDGE})
+
     tools = support_tool_definitions()
     model = _chat_model()
     if session is None:
         session = _ChatSessionStub()  # type: ignore
 
+    ticket_nudged = False
+
     async with httpx.AsyncClient(timeout=90.0) as client:
-        for _ in range(4):
+        for _ in range(5):
             resp = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -107,7 +193,32 @@ async def complete_support_chat(
             choice = data["choices"][0]["message"]
             tool_calls = choice.get("tool_calls") or []
             if not tool_calls:
-                return str(choice.get("content") or "").strip()
+                # Facebook/ad intent: the model must never surface free-form text (it
+                # tends to invent generic "things to check" regardless of the prompt).
+                # Until a ticket actually exists, replace any answer with a fixed
+                # routing reply that collects contact info + a callback time.
+                if route_facebook and not getattr(session, "ticket_created", False):
+                    return _FACEBOOK_ROUTING_REPLY
+                # For billing/cancellation requests, never let Hannah finalize a reply
+                # (troubleshooting or claiming it's handled) unless a ticket was actually
+                # created. Nudge once with the right instruction.
+                if (
+                    billing_cancel_intent
+                    and not ticket_nudged
+                    and ticket_creation_enabled()
+                    and not getattr(session, "ticket_created", False)
+                ):
+                    ticket_nudged = True
+                    openai_messages.append(choice)
+                    openai_messages.append({"role": "system", "content": _TICKET_ENFORCE_NUDGE})
+                    continue
+                reply = redact_support_contacts(str(choice.get("content") or "").strip())
+                # Always offer to schedule a callback after a follow-up ticket is logged.
+                # The time question must be the closing sentence (any "anything else?"
+                # pleasantry is stripped so the reply doesn't end with two questions).
+                if should_offer_callback_time(messages, session, reply):
+                    reply = append_callback_time_prompt(reply)
+                return reply
 
             openai_messages.append(choice)
             for tc in tool_calls:
@@ -117,7 +228,12 @@ async def complete_support_chat(
                     args = json.loads(fn.get("arguments") or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                result = await executor.execute_tool(name, args, session)
+                # Hard guard: never let the model auto-book a callback at a time the
+                # customer never gave. It must ask first.
+                if name == "schedule_callback" and not customer_stated_a_time(messages):
+                    result = _NO_TIME_GUARD_RESULT
+                else:
+                    result = await executor.execute_tool(name, args, session)
                 openai_messages.append(
                     {
                         "role": "tool",
@@ -126,7 +242,7 @@ async def complete_support_chat(
                     }
                 )
 
-    return "I'm having trouble right now — a representative will reach out as soon as possible. You can also email support@hammertime.com."
+    return "I'm having trouble right now — let me log a ticket so a Hammer representative can reach out as soon as possible. Could you share your dealership name, your name, and the email on your Hammer account?"
 
 
 def _record_sources(
@@ -271,7 +387,7 @@ async def preview_support_response(
             choice = data["choices"][0]["message"]
             tool_calls = choice.get("tool_calls") or []
             if not tool_calls:
-                reply = str(choice.get("content") or "").strip()
+                reply = redact_support_contacts(str(choice.get("content") or "").strip())
                 break
 
             openai_messages.append(choice)
@@ -298,8 +414,9 @@ async def preview_support_response(
                 )
         else:
             reply = (
-                "I'm having trouble right now — a representative will reach out as soon as possible. "
-                "You can also email support@hammertime.com."
+                "I'm having trouble right now — let me log a ticket so a Hammer representative can reach out "
+                "as soon as possible. Could you share your dealership name, your name, and the email on your "
+                "Hammer account?"
             )
 
     return {
@@ -373,7 +490,7 @@ async def regenerate_support_response(
         )
         resp.raise_for_status()
         data = resp.json()
-        reply = str(data["choices"][0]["message"].get("content") or "").strip()
+        reply = redact_support_contacts(str(data["choices"][0]["message"].get("content") or "").strip())
 
     if not reply:
         return {"ok": False, "error": "Could not generate a response from that information."}

@@ -10,9 +10,175 @@ import json
 
 import logging
 
+import re
+
 from dataclasses import dataclass, field
 
 from typing import Any, Callable
+
+
+# Hammer support never tells a customer to email — we log a ticket instead. The
+# wiki/KB still contains the public support inbox, so we strip it from anything
+# we feed the model (it cannot repeat an address it never sees).
+# Hammer's own domains. We strip support-style inboxes on these (the AI must
+# never hand out an email); HR addresses (hr@, recruiting@) are intentionally
+# preserved for the careers/employment-verification flows.
+_SUPPORT_INBOX_RE = re.compile(
+    r"\b(?:support|cancellations?|help|billing|info|contact|care|service|sales)@(?:hammertime|hammer-corp)\.com\b",
+    re.IGNORECASE,
+)
+_EMAIL_VERB_INBOX_RE = re.compile(
+    r"(?:you\s+can\s+)?"
+    r"(?:e-?mail|contact|reach(?:\s+out)?(?:\s+to)?|write\s+to|message)\s+"
+    r"(?:us|them|hammer(?:\s+support)?|our\s+(?:support\s+)?team|the\s+(?:support\s+)?team|support)?\s*"
+    r"(?:(?:via|by)\s+e-?mail\s+)?"
+    r"(?:at\s+)?"
+    r"(?:support|cancellations?|help|billing|info|contact|care|service|sales)@(?:hammertime|hammer-corp)\.com",
+    re.IGNORECASE,
+)
+
+# A callback may only be scheduled once the CUSTOMER has actually stated a day/time.
+# The model otherwise invents one ("tomorrow at 2:30pm") and books it silently. This
+# detects a real time/day expression in the customer's own words so we can hard-block
+# schedule_callback when they haven't given one. Careful to avoid false hits like the
+# "am" in "I am Tyler".
+_USER_TIME_HINT_RE = re.compile(
+    r"\b\d{1,2}:\d{2}\b"  # 2:30, 14:30
+    r"|\b\d{1,2}\s*(?:am|pm|a\.m\.?|p\.m\.?|o'?clock)\b"  # 2pm, 11 am, 3 o'clock
+    r"|\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b"
+    r"|\b(?:tomorrow|today|tonight|noon|midnight|morning|afternoon|evening)\b"
+    r"|\bnext\s+(?:week|mon|tues|wednes|thurs|fri|satur|sun)(?:day)?\b"
+    r"|\bthis\s+(?:week|afternoon|morning|evening|mon|tues|wednes|thurs|fri|satur|sun)(?:day)?\b"
+    r"|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:thirty|fifteen|forty[-\s]?five|o'?clock|am|pm)\b"
+    r"|\b(?:half\s+past|quarter\s+(?:past|to))\b",
+    re.IGNORECASE,
+)
+
+_NO_TIME_GUARD_RESULT = (
+    "BLOCKED — do not schedule. The customer has NOT given a specific day or time for a "
+    "callback yet, so you may not call schedule_callback. Ask them in your own words, e.g. "
+    "\"When works best for someone to reach out to you?\", and wait for their answer. Only "
+    "call schedule_callback after they state an actual day/time. If they say they have no "
+    "preference, do not schedule anything — the support ticket alone is enough."
+)
+
+
+def customer_stated_a_time(messages: list[dict[str, Any]] | None) -> bool:
+    """True if any *customer* (user) turn contains a concrete day/time expression."""
+    if not messages:
+        return False
+    for m in messages:
+        if m.get("role") != "user":
+            continue
+        if _USER_TIME_HINT_RE.search(str(m.get("content") or "")):
+            return True
+    return False
+
+
+# After a ticket is logged for human follow-up, Hannah must offer to schedule a callback
+# by asking for the customer's preferred time. The model does this inconsistently, so we
+# enforce it deterministically.
+_ASKS_FOR_TIME_RE = re.compile(
+    r"\b(?:preferred|best)\b[^.?!]{0,40}\b(?:day|time)\b"
+    r"|\bday\s+and\s+time\b"
+    r"|\bwhat\s+time\b"
+    r"|\bwhen\s+(?:works|would|is\s+best|is\s+good)\b"
+    r"|\btime\s+(?:that\s+)?works\b"
+    r"|\bwork(?:s)?\s+best\s+for\s+(?:you|someone)\b",
+    re.IGNORECASE,
+)
+
+CALLBACK_TIME_PROMPT = (
+    "Is there a particular day and time that works best for someone to reach out to you?"
+)
+
+# Generic closing pleasantries ("Is there anything else I can help with?", "feel free to
+# ask!"). When we have to append the callback-time question, these must NOT come first —
+# "...feel free to ask! Is there a particular day and time..." reads wrong — so we strip
+# them from the end of the reply and let the time question be the closer.
+_PLEASANTRY_CORE = (
+    r"(?:is there )?anything else"
+    r"|feel free to (?:ask|reach out|let (?:me|us) know)"
+    r"|let (?:me|us) know if (?:you|there)"
+    r"|if you (?:need|have) any(?:thing)?\s*(?:else|more|other|further questions)?"
+    r"|any (?:other|further|more) questions"
+    r"|further assistance"
+    r"|happy to help with anything"
+)
+
+_TRAILING_PLEASANTRY_RE = re.compile(
+    r"(?:^|(?<=[.?!]))\s*[^.?!]*(?:" + _PLEASANTRY_CORE + r")[^.?!]*[.?!]?\s*$",
+    re.IGNORECASE,
+)
+
+_PLEASANTRY_SENTENCE_RE = re.compile(_PLEASANTRY_CORE, re.IGNORECASE)
+
+
+def is_closing_pleasantry(sentence: str) -> bool:
+    """True if this (single) sentence is a generic 'anything else?' style closer."""
+    return bool(_PLEASANTRY_SENTENCE_RE.search(sentence or ""))
+
+
+def append_callback_time_prompt(reply: str) -> str:
+    """End the reply with the callback-time question, dropping any trailing
+    'anything else?' closers so the question lands naturally as the final sentence."""
+    text = (reply or "").strip()
+    while True:
+        trimmed = _TRAILING_PLEASANTRY_RE.sub("", text).strip()
+        if trimmed == text:
+            break
+        text = trimmed
+    return f"{text} {CALLBACK_TIME_PROMPT}".strip()
+
+
+def _reply_or_history_asks_for_time(messages: list[dict[str, Any]] | None, reply: str) -> bool:
+    if _ASKS_FOR_TIME_RE.search(reply or ""):
+        return True
+    for m in messages or []:
+        if m.get("role") == "assistant" and _ASKS_FOR_TIME_RE.search(str(m.get("content") or "")):
+            return True
+    return False
+
+
+def should_offer_callback_time(
+    messages: list[dict[str, Any]] | None, session: Any, reply: str
+) -> bool:
+    """True when we must append the callback-time question to the reply.
+
+    Fires only once per conversation: after a follow-up ticket exists, when the customer
+    hasn't already given a time and nobody (model or a prior enforced turn) has asked yet.
+    """
+    if session is None or not getattr(session, "ticket_created", False):
+        return False
+    if getattr(session, "resolved", False):
+        return False  # self-served, no human follow-up needed
+    if customer_stated_a_time(messages):
+        return False  # they already gave a time
+    if _reply_or_history_asks_for_time(messages, reply):
+        return False  # already asked
+    return True
+
+
+def _redact_support_contacts(text: str) -> str:
+    """Strip the public Hammer support inbox from anything the model sees or says.
+
+    Hammer support never hands out an email address — the AI logs a ticket
+    instead. The wiki/KB still contains the public inbox and the model will even
+    invent ``support@hammertime.com`` from the domain, so we sanitize both the
+    retrieved excerpts AND the final response as a deterministic backstop.
+    """
+    if not text:
+        return text
+    text = _EMAIL_VERB_INBOX_RE.sub(
+        "let me log a support ticket so a Hammer rep can reach out to you — no email needed", text
+    )
+    text = _SUPPORT_INBOX_RE.sub("the Hammer support team", text)
+    return text
+
+
+def redact_support_contacts(text: str) -> str:
+    """Public wrapper so other modules can sanitize outgoing responses."""
+    return _redact_support_contacts(text)
 
 
 
@@ -22,9 +188,11 @@ _log = logging.getLogger(__name__)
 
 HUMAN_SUPPORT_MESSAGE = (
 
-    "I've flagged this for our team — a Hammer representative will reach out as soon as possible. "
+    "I've flagged this for our team and I'll log a ticket so a Hammer representative can reach out "
 
-    "If you need to follow up by email, use support@hammertime.com."
+    "as soon as possible. Just so they have what they need, what's your dealership name, your name, "
+
+    "and the email on your Hammer account?"
 
 )
 
@@ -136,7 +304,7 @@ def support_tool_definitions() -> list[dict[str, Any]]:
 
                             "type": "string",
 
-                            "description": "Mobile number with country code, e.g. +15551234567 (required).",
+                            "description": "Mobile number with country code, e.g. +15551234567 (OPTIONAL — only if the customer offers it; never block the ticket waiting on a phone number).",
 
                         },
 
@@ -160,7 +328,7 @@ def support_tool_definitions() -> list[dict[str, Any]]:
 
                             "type": "string",
 
-                            "description": "Optional: login, billing, integrations, dashboard, facebook-aia, marketposter, connect, other",
+                            "description": "Optional: login, ai-responses, crm-leads, facebook-aia, inventory, sales-demo, billing, cancellation, other. Use 'billing' for charges/invoices/payments/refunds, 'cancellation' for any cancel/pause/downgrade/close-account request, 'crm-leads' for lead delivery/CRM/integration issues, and 'ai-responses' for questions about what the AI said to customers.",
 
                         },
 
@@ -175,8 +343,6 @@ def support_tool_definitions() -> list[dict[str, Any]]:
                         "last_name",
 
                         "email",
-
-                        "phone",
 
                         "issue_summary",
 
@@ -224,7 +390,7 @@ def support_tool_definitions() -> list[dict[str, Any]]:
 
                             "type": "string",
 
-                            "description": "Category: login, billing, integrations, dashboard, facebook-aia, marketposter, connect, other",
+                            "description": "Category: login, ai-responses, crm-leads, facebook-aia, inventory, sales-demo, billing, cancellation, other",
 
                         },
 
@@ -271,10 +437,15 @@ def support_tool_definitions() -> list[dict[str, Any]]:
             "function": {
                 "name": "schedule_callback",
                 "description": (
-                    "Schedule a callback when a CURRENT Hammer customer asks for someone to reach out and "
-                    "help them with their account at a specific time. Collect all required fields first. "
-                    "Pass requested_time as a full ISO 8601 datetime (include the date, time, and timezone "
-                    "offset if known, e.g. 2026-06-10T14:30:00-05:00). Confirm the time back to the customer."
+                    "Schedule a callback for a CURRENT Hammer customer who needs a live rep to reach out. "
+                    "ONLY call this AFTER the customer has told you their preferred day and time — never "
+                    "invent, assume, or pick a time yourself. Always ask 'When works best for you?' first "
+                    "and use what they say. Collect the required fields first. Pass requested_time as a full "
+                    "ISO 8601 datetime (include the date, time, and timezone offset if known, e.g. "
+                    "2026-06-10T14:30:00-05:00) and requested_time_label as the customer's own words. If their "
+                    "requested time is already taken or outside business hours, this tool automatically books "
+                    "the CLOSEST available time and returns it with adjusted=true — read the returned message "
+                    "and confirm that exact time back to the customer."
                 ),
                 "parameters": {
                     "type": "object",
@@ -284,9 +455,9 @@ def support_tool_definitions() -> list[dict[str, Any]]:
                         "last_name": {"type": "string", "description": "Customer last name (required)."},
                         "phone": {
                             "type": "string",
-                            "description": "Callback number with country code, e.g. +15551234567 (required).",
+                            "description": "Callback number with country code, e.g. +15551234567 (OPTIONAL — capture if offered; never block scheduling on it).",
                         },
-                        "email": {"type": "string", "description": "Email (optional but preferred)."},
+                        "email": {"type": "string", "description": "Email — Hammer account email preferred (optional but preferred)."},
                         "requested_time": {
                             "type": "string",
                             "description": "Desired callback time as ISO 8601, e.g. 2026-06-10T14:30:00-05:00 (required).",
@@ -312,7 +483,6 @@ def support_tool_definitions() -> list[dict[str, Any]]:
                         "dealership_name",
                         "first_name",
                         "last_name",
-                        "phone",
                         "requested_time",
                         "reason",
                     ],
@@ -352,7 +522,7 @@ def format_wiki_excerpts(pairs: list[tuple[Any, float]], *, max_chars: int = 450
 
         used += len(block)
 
-    return "\n".join(lines)
+    return _redact_support_contacts("\n".join(lines))
 
 
 def _is_ticket_doc_id(doc_id: str) -> bool:
@@ -465,7 +635,7 @@ def format_support_knowledge_result(result: dict[str, Any], *, max_chars: int = 
 
             if not add(header):
 
-                return "\n".join(lines).strip()
+                return _redact_support_contacts("\n".join(lines).strip())
 
             for ch, score in case.get("chunks") or []:
 
@@ -473,9 +643,9 @@ def format_support_knowledge_result(result: dict[str, Any], *, max_chars: int = 
 
                 if not add(block):
 
-                    return "\n".join(lines).strip()
+                    return _redact_support_contacts("\n".join(lines).strip())
 
-    return "\n".join(lines).strip()
+    return _redact_support_contacts("\n".join(lines).strip())
 
 
 

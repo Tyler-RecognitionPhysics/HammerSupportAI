@@ -1,9 +1,17 @@
 """CS Questions Database — mine the top customer questions/reasons from HubSpot tickets.
 
-Reads synced HubSpot resolved-ticket subjects, normalizes and aggregates them,
-then uses an LLM (map + reduce) to cluster them into the top ~100 canonical
-customer questions with volume counts. Results are cached so the AI and the
-support team can learn from the most common reasons customers reach out.
+Ranks the top reasons customers reach out across ALL inbound tickets (open +
+resolved) so the picture reflects real demand, not just tickets that happen to be
+resolved. For resolved tickets it mines the customer's own words from the enriched
+Help Desk Timeline; for open tickets it uses the inbound subject + description.
+Subjects/issues are normalized and aggregated, then an LLM (map + reduce) clusters
+them into the top ~100 canonical customer questions with volume counts.
+
+Answer-learning (the Q&A board and the AI knowledge base) stays scoped to resolved
+tickets, which are the only ones carrying real resolutions. Set
+CS_QUESTIONS_RANK_SOURCE=resolved to rank from resolved tickets only (legacy).
+Results are cached so the AI and the support team can learn from the most common
+reasons customers reach out.
 """
 
 from __future__ import annotations
@@ -26,7 +34,13 @@ import httpx
 _log = logging.getLogger(__name__)
 
 TOP_N = 100
-_BUILD_VERSION = "csq-customer-initiated-v5-cancellation"
+_BUILD_VERSION = "csq-hubspot-categories-v7"
+# Which ticket population to RANK the top reasons from:
+#   "all"      → every inbound ticket, open + resolved (true demand; default)
+#   "resolved" → only resolved tickets (legacy behaviour)
+# Answer-learning (the Q&A board / KB) always stays scoped to resolved tickets,
+# regardless of this setting, since only resolved tickets carry real resolutions.
+RANK_SOURCE = (os.environ.get("CS_QUESTIONS_RANK_SOURCE", "all").strip().lower() or "all")
 # How many distinct (normalized) subjects to feed the LLM, highest-volume first.
 # 0 (default) = analyze ALL unique subjects. Override with CS_QUESTIONS_MAX_SUBJECTS.
 MAX_INPUT_SUBJECTS = int(os.environ.get("CS_QUESTIONS_MAX_SUBJECTS", "0") or "0")
@@ -540,6 +554,77 @@ def read_ticket_subjects() -> list[str]:
     return [r["subject"] for r in read_ticket_rows()]
 
 
+def read_all_ticket_rows() -> list[dict[str, str]]:
+    """Every inbound ticket (open + resolved) for demand ranking.
+
+    Reads the lightweight ``hubspot_all_tickets`` table captured during sync and
+    left-joins the resolved-ticket store so each row knows whether it has an
+    enriched markdown file (``is_closed``) and where to find it (``file_name``).
+    Falls back to the resolved-only rows when the all-tickets table is missing or
+    empty (e.g. before the first sync after deploying this feature), so behaviour
+    degrades gracefully rather than returning nothing.
+    """
+    try:
+        from hubspot_tickets_sync import _state_db_path
+    except Exception:
+        return read_ticket_rows()
+
+    path = _state_db_path()
+    try:
+        if not path.is_file():
+            return read_ticket_rows()
+    except Exception:
+        return read_ticket_rows()
+
+    excluded = excluded_stage_ids()
+    rows_out: list[dict[str, str]] = []
+    try:
+        conn = sqlite3.connect(str(path))
+        try:
+            has_all = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='hubspot_all_tickets'"
+            ).fetchone()
+            if not has_all:
+                return read_ticket_rows()
+            rows = conn.execute(
+                """
+                SELECT a.ticket_id, a.subject, a.stage_id, a.content, t.file_name
+                FROM hubspot_all_tickets a
+                LEFT JOIN hubspot_tickets t ON t.ticket_id = a.ticket_id
+                """
+            ).fetchall()
+        finally:
+            conn.close()
+        for row in rows:
+            ticket_id = str(row[0] or "").strip()
+            subject = str(row[1] or "").strip()
+            stage_id = str(row[2] or "").strip()
+            content = str(row[3] or "")
+            file_name = str(row[4] or "").strip()
+            if not subject and not content.strip():
+                continue
+            if excluded and stage_id in excluded:
+                continue
+            rows_out.append(
+                {
+                    "ticket_id": ticket_id,
+                    "subject": subject,
+                    "stage_id": stage_id,
+                    "content": content,
+                    "file_name": file_name,
+                    # Resolved tickets are the ones with a synced markdown file.
+                    "is_closed": "1" if file_name else "",
+                }
+            )
+    except sqlite3.Error as exc:
+        _log.warning("cs_questions: could not read all-ticket rows: %s", exc)
+        return read_ticket_rows()
+
+    if not rows_out:
+        return read_ticket_rows()
+    return rows_out
+
+
 def normalize_subject(subject: str) -> str:
     s = subject.strip().lower()
     # Strip repeated Re:/Fwd: prefixes
@@ -594,14 +679,44 @@ def looks_like_noise(norm_subject: str) -> bool:
     return False
 
 
+def _open_ticket_issue_text(row: dict[str, str]) -> str:
+    """Issue text for an OPEN/unresolved ticket (no enriched timeline available).
+
+    Open tickets aren't enriched with the Help Desk Timeline, so we fall back to
+    the customer's initial subject + description (the inbound request that created
+    the ticket). This keeps the demand ranking honest about what customers are
+    contacting us about even before a ticket is resolved. Downstream noise filters
+    and the LLM is_support gate drop anything that isn't a real customer question.
+    """
+    raw = str(row.get("subject") or "").strip()
+    content = str(row.get("content") or "").strip()
+    cleaned = _clean_customer_text(content) if content else ""
+    parts: list[str] = []
+    if raw:
+        parts.append(raw)
+    if cleaned and cleaned.lower() != raw.lower():
+        parts.append(cleaned)
+    text = _RE_WS.sub(" ", " — ".join(parts)).strip(" —\t")
+    return text
+
+
 def _ticket_issue_text(row: dict[str, str]) -> tuple[str, bool, bool]:
     """Return (issue_text, customer_initiated, used_ticket_body).
 
-    Prefers the customer's own inbound words. When CS_QUESTIONS_CUSTOMER_INITIATED_ONLY
-    is set (default), tickets with no inbound customer content return empty text so they
-    are dropped from the top-questions analysis (account reviews, proactive sales, etc.).
+    Prefers the customer's own inbound words from the enriched (resolved) ticket
+    timeline. For OPEN tickets (no markdown/timeline) it uses the inbound
+    subject + description so the demand ranking covers all inbound tickets. When
+    CS_QUESTIONS_CUSTOMER_INITIATED_ONLY is set (default), RESOLVED tickets with no
+    inbound customer content return empty text so they are dropped from the
+    analysis (account reviews, proactive sales, etc.).
     """
     raw = str(row.get("subject") or "").strip()
+    # Resolved tickets are the ones with a synced markdown file. Rows from the
+    # resolved-only reader have no "is_closed" key → treat them as closed so the
+    # legacy resolved-only behaviour is preserved exactly.
+    is_closed_raw = row.get("is_closed")
+    is_closed = True if is_closed_raw is None else (str(is_closed_raw) not in ("", "0", "false"))
+
     path = _ticket_markdown_path(row)
     body = ""
     if path:
@@ -615,6 +730,13 @@ def _ticket_issue_text(row: dict[str, str]) -> tuple[str, bool, bool]:
         if customer_text:
             prefix = f"[{form_category}] " if form_category else ""
             return f"{prefix}{customer_text}", True, True
+
+    if not is_closed:
+        text = _open_ticket_issue_text(row)
+        if text:
+            # Customer-initiated is left False (we can't confirm inbound direction
+            # without the timeline), but the text still counts toward demand.
+            return text, False, bool(str(row.get("content") or "").strip())
 
     if _CUSTOMER_INITIATED_ONLY:
         return "", False, False
@@ -638,10 +760,17 @@ def aggregate_subjects(rows: list[dict[str, str]]) -> tuple[list[dict[str, Any]]
         "customer_initiated": 0,
         "excluded_internal": 0,
         "ticket_text_enriched": 0,
+        "resolved_tickets": 0,
+        "open_tickets": 0,
     }
     for row in rows:
         raw = str(row.get("subject") or "")
         ticket_id = str(row.get("ticket_id") or "").strip()
+        is_closed_raw = row.get("is_closed")
+        if is_closed_raw is None or str(is_closed_raw) not in ("", "0", "false"):
+            stats["resolved_tickets"] += 1
+        else:
+            stats["open_tickets"] += 1
         issue_text, customer_initiated, used_body = _ticket_issue_text(row)
         if customer_initiated:
             stats["customer_initiated"] += 1
@@ -733,9 +862,11 @@ _MAP_SYSTEM = (
     "For support items (s=true), write the canonical question from the CUSTOMER'S point of view "
     "(5-9 words, plain language, no names or numbers), e.g. 'How do I change my AI response "
     "settings?' or 'Why aren't my leads coming through?'. Pick a category from: "
-    "login, billing, integrations, dashboard, facebook-aia, marketposter, connect, leads, "
-    "account, cancellation, training, other.\n"
-    "Use 'cancellation' (NOT 'account' or 'billing') for ANY request to cancel, close, pause, "
+    "login (help logging in / passwords), ai-responses (what the AI says to customers), "
+    "crm-leads (CRM / lead delivery / integrations), facebook-aia (Facebook / TikTok "
+    "advertising, Marketplace), inventory (vehicles / listings / feeds), sales-demo, "
+    "billing, cancellation, other.\n"
+    "Use 'cancellation' (NOT 'billing') for ANY request to cancel, close, pause, "
     "suspend, downgrade, or stop the subscription/service, or to give notice / not be renewed.\n"
     'Return ONLY JSON: {"mappings":[{"i":<index>,"s":true|false,"q":"<question or empty>",'
     '"c":"<category>"}]} with one entry per input index.'
@@ -767,8 +898,10 @@ _REDUCE_SYSTEM = (
     "Merge near-duplicates and rephrasings into a single canonical question. "
     "Group the provided labels: every input label must belong to exactly one group. "
     "Use the clearest customer-intent phrasing for each group's canonical question "
-    "(5-9 words) and assign a category from: login, billing, integrations, dashboard, "
-    "facebook-aia, marketposter, connect, leads, account, cancellation, training, other. "
+    "(5-9 words) and assign a category from: login (help logging in), ai-responses "
+    "(what the AI says to customers), crm-leads (CRM / lead delivery / integrations), "
+    "facebook-aia (Facebook / TikTok advertising), inventory, sales-demo, billing, "
+    "cancellation, other. "
     "Use 'cancellation' for any cancel/close/pause/suspend/downgrade/stop-service or "
     "notice-to-cancel request. Keep all cancellation questions grouped under cancellation. "
     'Return ONLY JSON: {"groups":[{"canonical":"<question>","category":"<category>",'
@@ -1008,7 +1141,9 @@ def _reduce_questions(labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]
 
 
 def _compute_cs_questions() -> dict[str, Any]:
-    rows = read_ticket_rows()
+    # Rank demand from ALL inbound tickets (open + resolved) by default; answer
+    # learning downstream stays resolved-only regardless of this choice.
+    rows = read_all_ticket_rows() if RANK_SOURCE == "all" else read_ticket_rows()
     total_tickets = len(rows)
     if not rows:
         return {
@@ -1057,6 +1192,9 @@ def _compute_cs_questions() -> dict[str, Any]:
                     "customer_initiated": aggregate_stats["customer_initiated"],
                     "excluded_internal": aggregate_stats["excluded_internal"],
                     "ticket_text_enriched": aggregate_stats["ticket_text_enriched"],
+                    "resolved_tickets": aggregate_stats["resolved_tickets"],
+                    "open_tickets": aggregate_stats["open_tickets"],
+                    "ranking_source": RANK_SOURCE,
                 }
             )
             return out
@@ -1089,6 +1227,9 @@ def _compute_cs_questions() -> dict[str, Any]:
         "customer_initiated": aggregate_stats["customer_initiated"],
         "excluded_internal": aggregate_stats["excluded_internal"],
         "ticket_text_enriched": aggregate_stats["ticket_text_enriched"],
+        "resolved_tickets": aggregate_stats["resolved_tickets"],
+        "open_tickets": aggregate_stats["open_tickets"],
+        "ranking_source": RANK_SOURCE,
         **map_stats,
         "cache_full_hit": False,
         "unique_subjects": len(aggregated),
@@ -1151,6 +1292,9 @@ def _run_rebuild() -> None:
                     "customer_initiated": result.get("customer_initiated", 0),
                     "excluded_internal": result.get("excluded_internal", 0),
                     "ticket_text_enriched": result.get("ticket_text_enriched", 0),
+                    "resolved_tickets": result.get("resolved_tickets", 0),
+                    "open_tickets": result.get("open_tickets", 0),
+                    "ranking_source": result.get("ranking_source", RANK_SOURCE),
                     "map_cache_hits": result.get("map_cache_hits", 0),
                     "map_cache_misses": result.get("map_cache_misses", 0),
                     "map_cache_writes": result.get("map_cache_writes", 0),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,9 +62,13 @@ def _validate_payload(payload: SupportTicketPayload) -> str | None:
     email = normalize_email(payload.email.strip())
     if "@" not in email:
         return "valid email is required"
-    phone = normalize_phone_e164(payload.phone.strip())
-    if len("".join(c for c in phone if c.isdigit())) < 10:
-        return "valid phone with country code is required"
+    # Phone is optional — never block ticket creation (or force the customer to
+    # email us) just because they did not share a number. Validate only if given.
+    phone_raw = payload.phone.strip()
+    if phone_raw:
+        phone = normalize_phone_e164(phone_raw)
+        if len("".join(c for c in phone if c.isdigit())) < 10:
+            return "phone number looks invalid — include country code or leave it blank"
     if not payload.issue_summary.strip():
         return "issue_summary is required"
     return None
@@ -178,21 +183,28 @@ async def create_and_notify_ticket(
             "error": hubspot_result.get("error") or "HubSpot ticket creation failed",
         }
 
+    # Fire-and-forget: the Slack round trip (~0.3-1s) must never delay the AI's
+    # spoken/typed confirmation to the customer.
     slack_posted = False
     if slack_ticket_notify_configured():
-        slack_posted = post_new_support_ticket_alert(
-            dealership_name=payload.dealership_name,
-            first_name=payload.first_name,
-            last_name=payload.last_name,
-            email=payload.email,
-            phone=payload.phone,
-            issue_summary=payload.issue_summary,
-            channel=payload.channel,
-            resolved=payload.resolved,
-            hubspot_ticket_id=hubspot_id,
-            ticket_url=ticket_url,
-            session_id=payload.session_id,
-        )
+        slack_posted = True
+        threading.Thread(
+            target=post_new_support_ticket_alert,
+            kwargs=dict(
+                dealership_name=payload.dealership_name,
+                first_name=payload.first_name,
+                last_name=payload.last_name,
+                email=payload.email,
+                phone=payload.phone,
+                issue_summary=payload.issue_summary,
+                channel=payload.channel,
+                resolved=payload.resolved,
+                hubspot_ticket_id=hubspot_id,
+                ticket_url=ticket_url,
+                session_id=payload.session_id,
+            ),
+            daemon=True,
+        ).start()
 
     local = record_support_ticket(
         dealership=payload.dealership_name,
