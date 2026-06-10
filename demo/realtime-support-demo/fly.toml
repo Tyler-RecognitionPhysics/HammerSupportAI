@@ -15,6 +15,9 @@ primary_region = "iad"
   SUPPORT_RAW_DIR = "/data/raw/support-data"
   SUPPORT_KB_DB = "/data/support_kb.sqlite"
   SUPPORT_HUBSPOT_TICKETS_STATE_DB = "/data/hubspot_tickets_sync.sqlite"
+  # Dashboard store (sessions, callbacks, tickets, settings) must live on the
+  # volume — it is the durable source of truth the Vercel deployment proxies to.
+  SUPPORT_DASHBOARD_DB = "/data/support_dashboard.sqlite"
   # Automatic daily HubSpot ticket sync (incremental). 0 disables.
   SUPPORT_AUTO_SYNC_INTERVAL_HOURS = "24"
 

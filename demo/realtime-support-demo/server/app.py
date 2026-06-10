@@ -219,6 +219,24 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def _remote_dashboard_proxy(request: Request, call_next):
+    """On serverless (Vercel), /tmp storage is per-instance and ephemeral, so the
+    dashboard would show random/incomplete data. Proxy all admin dashboard
+    traffic to the persistent sync host (single durable store); fall back to
+    local handling if the host is unreachable."""
+    path = request.url.path
+    if path.startswith("/api/admin/support"):
+        from support_remote_dashboard import forward_admin_request, should_proxy_admin_path
+
+        if should_proxy_admin_path(path):
+            try:
+                return await forward_admin_request(request)
+            except Exception:
+                logging.getLogger(__name__).exception("remote dashboard proxy failed; serving locally")
+    return await call_next(request)
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -273,6 +291,34 @@ def health() -> dict:
         "hubspot_ticket_create_configured": hubspot_ticket_create_configured(),
         "slack_ticket_notify_configured": slack_ticket_notify_configured(),
     }
+
+
+@app.post("/api/internal/store-sync")
+async def internal_store_sync(request: Request) -> dict:
+    """Receive mirrored store writes from serverless instances (runs on the
+    persistent host). Token-protected with the artifact/admin secret."""
+    import hmac
+
+    from support_remote_dashboard import internal_token
+
+    expected = internal_token()
+    auth = request.headers.get("authorization", "")
+    provided = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if not expected or not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(401, "Invalid internal token")
+
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, "Invalid JSON body") from exc
+
+    from support_dashboard_store import apply_store_op
+
+    op = str(body.get("op") or "")
+    data = body.get("data") or {}
+    if not isinstance(data, dict):
+        raise HTTPException(400, "data must be an object")
+    return apply_store_op(op, data)
 
 
 @app.get("/api/warmup")

@@ -260,6 +260,15 @@ def register_session_start(call_id: str, *, channel: str = "browser_voice") -> N
                 """,
                 (call_id, channel, now, now),
             )
+    # Best-effort mirror so the dashboard shows the session as soon as it starts;
+    # the synchronous session_save push later carries the authoritative row.
+    from support_remote_dashboard import push_store_op
+
+    push_store_op(
+        "session_start",
+        {"call_id": call_id, "channel": channel, "started_at": now},
+        wait=False,
+    )
 
 
 def persist_session(session: SupportSession, messages: list[dict], *, agent_reply: str = "") -> None:
@@ -322,6 +331,30 @@ def persist_session(session: SupportSession, messages: list[dict], *, agent_repl
                     session.call_id,
                 ),
             )
+
+    # Mirror the full session row to the persistent host (no-op outside serverless).
+    from support_remote_dashboard import push_store_op
+
+    push_store_op(
+        "session_save",
+        {
+            "call_id": session.call_id,
+            "channel": getattr(session, "channel", "") or "browser_voice",
+            "issue_category": session.issue_category,
+            "escalated": int(session.escalated),
+            "resolved": int(session.resolved),
+            "transcript": transcript,
+            "session_log": session.session_log,
+            "ticket_created": int(getattr(session, "ticket_created", False)),
+            "hubspot_ticket_id": str(getattr(session, "hubspot_ticket_id", "") or ""),
+            "dealership_name": str(getattr(session, "dealership_name", "") or ""),
+            "first_name": str(getattr(session, "first_name", "") or ""),
+            "last_name": str(getattr(session, "last_name", "") or ""),
+            "email": str(getattr(session, "email", "") or ""),
+            "phone": str(getattr(session, "phone", "") or ""),
+            "ended_at": now,
+        },
+    )
 
     if session.call_id in _active:
         if session.resolved or session.escalated:
@@ -686,6 +719,26 @@ def record_support_ticket(
                 ),
             )
             ticket_id = cur.lastrowid
+
+    from support_remote_dashboard import push_store_op
+
+    push_store_op(
+        "ticket_record",
+        {
+            "dealership": dealership,
+            "email": email,
+            "phone": phone,
+            "message": message,
+            "first_name": fn,
+            "last_name": ln,
+            "contact_name": contact_label,
+            "session_id": session_id,
+            "channel": channel,
+            "resolved": bool(resolved),
+            "hubspot_ticket_id": hubspot_ticket_id,
+            "issue_category": issue_category,
+        },
+    )
     return {
         "ok": True,
         "ticket_id": ticket_id,
@@ -929,7 +982,16 @@ def create_appointment(
             )
             appt_id = cur.lastrowid
             row = conn.execute("SELECT * FROM appointments WHERE id = ?", (appt_id,)).fetchone()
-    return _appointment_row_to_dict(row)
+    result = _appointment_row_to_dict(row)
+
+    # Mirror AI-created callbacks to the persistent host so the dashboard
+    # calendar sees them (no-op outside serverless; dashboard-created callbacks
+    # are proxied straight to the persistent host and never reach this path there).
+    from support_remote_dashboard import push_store_op
+
+    payload = {k: v for k, v in result.items() if k not in ("id", "contact_name", "created_at", "updated_at")}
+    push_store_op("appointment_create", payload)
+    return result
 
 
 def list_appointments(
@@ -1000,8 +1062,14 @@ def delete_appointment(appointment_id: int) -> bool:
 
 SETTING_KEYS = ("support_voice_prompt", "support_chat_prompt", "chat_model", "kb_enabled_sources")
 
+# Serverless instances read settings from the persistent host (where the
+# dashboard saves them) with a short TTL so prompt/model/source changes apply
+# everywhere within a minute without a per-turn network hit.
+_remote_settings_cache: dict[str, Any] = {"at": 0.0, "values": None}
+_REMOTE_SETTINGS_TTL = 60.0
 
-def get_all_settings() -> dict[str, Any]:
+
+def _local_settings() -> dict[str, Any]:
     init_db()
     with _connect() as conn:
         rows = conn.execute("SELECT key, value_json FROM settings").fetchall()
@@ -1012,6 +1080,26 @@ def get_all_settings() -> dict[str, Any]:
         except json.JSONDecodeError:
             out[row["key"]] = row["value_json"]
     return out
+
+
+def get_all_settings() -> dict[str, Any]:
+    from support_remote_dashboard import fetch_remote_settings, remote_dashboard_enabled
+
+    if remote_dashboard_enabled():
+        import time as _time
+
+        now = _time.time()
+        cached = _remote_settings_cache.get("values")
+        if cached is not None and now - float(_remote_settings_cache.get("at") or 0) < _REMOTE_SETTINGS_TTL:
+            return dict(cached)
+        values = fetch_remote_settings()
+        if values is not None:
+            _remote_settings_cache["at"] = now
+            _remote_settings_cache["values"] = values
+            return dict(values)
+        if cached is not None:
+            return dict(cached)
+    return _local_settings()
 
 
 def set_settings(values: dict[str, Any]) -> None:
@@ -1036,6 +1124,102 @@ def clear_settings() -> None:
     with _db_lock:
         with _connect() as conn:
             conn.execute("DELETE FROM settings")
+
+
+def upsert_session_row(data: dict[str, Any]) -> None:
+    """Write a full session row mirrored from a serverless instance."""
+    call_id = str(data.get("call_id") or "").strip()
+    if not call_id:
+        return
+    init_db()
+    now = _utc_now()
+    channel = str(data.get("channel") or "browser_voice")
+    with _db_lock:
+        with _connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO sessions (call_id, channel, started_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(call_id) DO NOTHING
+                """,
+                (call_id, channel, str(data.get("started_at") or now), now),
+            )
+            conn.execute(
+                """
+                UPDATE sessions SET
+                  channel = ?,
+                  issue_category = ?,
+                  escalated = ?,
+                  resolved = ?,
+                  transcript_json = ?,
+                  session_log_json = ?,
+                  ticket_created = ?,
+                  hubspot_ticket_id = ?,
+                  dealership_name = ?,
+                  first_name = ?,
+                  last_name = ?,
+                  email = ?,
+                  phone = ?,
+                  ended_at = ?,
+                  updated_at = ?
+                WHERE call_id = ?
+                """,
+                (
+                    channel,
+                    str(data.get("issue_category") or ""),
+                    int(data.get("escalated") or 0),
+                    int(data.get("resolved") or 0),
+                    json.dumps(data.get("transcript") or []),
+                    json.dumps(data.get("session_log") or []),
+                    int(data.get("ticket_created") or 0),
+                    str(data.get("hubspot_ticket_id") or ""),
+                    str(data.get("dealership_name") or ""),
+                    str(data.get("first_name") or ""),
+                    str(data.get("last_name") or ""),
+                    str(data.get("email") or ""),
+                    str(data.get("phone") or ""),
+                    str(data.get("ended_at") or now),
+                    now,
+                    call_id,
+                ),
+            )
+
+
+def apply_store_op(op: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Apply a store write mirrored from a serverless instance (runs on the
+    persistent host). Returns a JSON-safe result for the internal endpoint."""
+    if op == "session_start":
+        register_session_start(
+            str(data.get("call_id") or "").strip(),
+            channel=str(data.get("channel") or "browser_voice"),
+        )
+        return {"ok": True}
+    if op == "session_save":
+        upsert_session_row(data)
+        return {"ok": True}
+    if op == "appointment_create":
+        allowed = {k: data[k] for k in data if k in _APPOINTMENT_FIELDS or k == "requested_at"}
+        appt = create_appointment(**allowed)
+        return {"ok": True, "id": appt.get("id")}
+    if op == "ticket_record":
+        result = record_support_ticket(
+            dealership=str(data.get("dealership") or ""),
+            email=str(data.get("email") or ""),
+            phone=str(data.get("phone") or ""),
+            message=str(data.get("message") or ""),
+            first_name=str(data.get("first_name") or ""),
+            last_name=str(data.get("last_name") or ""),
+            contact_name=str(data.get("contact_name") or ""),
+            session_id=str(data.get("session_id") or ""),
+            channel=str(data.get("channel") or ""),
+            resolved=bool(data.get("resolved")),
+            hubspot_ticket_id=str(data.get("hubspot_ticket_id") or ""),
+            issue_category=str(data.get("issue_category") or ""),
+        )
+        return {"ok": True, "ticket_id": result.get("ticket_id")}
+    if op == "settings_get":
+        return {"ok": True, "values": _local_settings()}
+    return {"ok": False, "error": f"Unknown op: {op}"}
 
 
 def get_cs_questions_cache() -> dict[str, Any] | None:
