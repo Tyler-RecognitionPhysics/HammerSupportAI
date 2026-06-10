@@ -81,6 +81,16 @@ def _openai_key() -> str:
     return os.environ.get("OPENAI_API_KEY", "").strip()
 
 
+def _openai_payload_extras() -> dict:
+    """Optional knobs applied to every chat-completions call.
+
+    SUPPORT_OPENAI_SERVICE_TIER=priority buys lower/more consistent TTFT on
+    paid priority processing — same model, same answers, just faster scheduling.
+    """
+    tier = os.environ.get("SUPPORT_OPENAI_SERVICE_TIER", "").strip()
+    return {"service_tier": tier} if tier else {}
+
+
 def _el_api_key() -> str:
     return os.environ.get("ELEVENLABS_API_KEY", "").strip()
 
@@ -341,8 +351,13 @@ async def _prepare_turn(
     wiki = ""
     if last_user and _needs_retrieval(last_user):
         try:
+            t0 = time.perf_counter()
             retriever = executor._get_retriever()
             wiki = await asyncio.to_thread(_query_specific_wiki, retriever, last_user)
+            _log.info(
+                "voice_timing call_id=%s retrieval_ms=%d wiki_chars=%d",
+                call_id, int((time.perf_counter() - t0) * 1000), len(wiki),
+            )
         except Exception:
             _log.exception("support_agent: question-specific wiki retrieval failed")
     elif last_user and call_id:
@@ -401,6 +416,7 @@ async def _run_tool_loop(
                 "tools": tools,
                 "tool_choice": "auto",
                 "temperature": 0.1,
+                **_openai_payload_extras(),
             },
         )
         resp.raise_for_status()
@@ -476,6 +492,7 @@ async def _stream_tool_loop(
                 "tool_choice": "auto",
                 "temperature": 0.1,
                 "stream": True,
+                **_openai_payload_extras(),
             },
         ) as resp:
             resp.raise_for_status()
@@ -634,6 +651,8 @@ async def handle_elevenlabs_llm(body: dict, get_retriever_fn: Callable) -> Strea
         yield f"data: {json.dumps(role_payload)}\n\n".encode()
 
         full_text = ""
+        turn_t0 = time.perf_counter()
+        ttft_ms = -1
         try:
             executor = await _get_executor(get_retriever_fn)
             # Facebook/ad routing turns stay buffered: their reply may be retracted
@@ -641,9 +660,12 @@ async def handle_elevenlabs_llm(body: dict, get_retriever_fn: Callable) -> Strea
             if _is_facebook_ads_intent(messages) and not getattr(session, "ticket_created", False):
                 text = await _run_tool_loop(messages, executor, session, model)
                 full_text = text
+                ttft_ms = int((time.perf_counter() - turn_t0) * 1000)
                 yield _sse_delta(text)
             else:
                 async for piece in _stream_tool_loop(messages, executor, session, model):
+                    if ttft_ms < 0:
+                        ttft_ms = int((time.perf_counter() - turn_t0) * 1000)
                     full_text += piece
                     yield _sse_delta(piece)
         except Exception:
@@ -665,6 +687,11 @@ async def handle_elevenlabs_llm(body: dict, get_retriever_fn: Callable) -> Strea
         }
         yield f"data: {json.dumps(done)}\n\n".encode()
         yield b"data: [DONE]\n\n"
+
+        _log.info(
+            "voice_timing call_id=%s ttft_ms=%d total_ms=%d reply_chars=%d",
+            call_id, ttft_ms, int((time.perf_counter() - turn_t0) * 1000), len(full_text),
+        )
 
         try:
             from support_dashboard_store import persist_session

@@ -6,9 +6,13 @@
   "functions": {
     "api/support-index.py": {
       "maxDuration": 300,
-      "includeFiles": "{wiki-support/**,knowledge/**,knowledge_support/**,demo/realtime-support-demo/server/**,demo/realtime-support-demo/web/src/*.ts,demo/shared/**,raw/support-data/**}"
+      "includeFiles": "{wiki-support/**,knowledge/*.py,knowledge_support/**,demo/realtime-support-demo/server/**,demo/realtime-support-demo/web/src/*.ts,demo/shared/**,raw/support-data/**}",
+      "excludeFiles": "{knowledge_support/data/hubspot_tickets_sync.sqlite,knowledge_support/data/hubspot_kb_sync.sqlite,knowledge_support/data/slack_sync.sqlite,knowledge_support/data/hubspot_budget.sqlite,**/__pycache__/**,raw/support-data/hubspot-tickets/**}"
     }
   },
+  "crons": [
+    { "path": "/api/warmup", "schedule": "*/5 * * * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/support-index" },
     { "source": "/admin/:path*", "destination": "/api/support-index" },

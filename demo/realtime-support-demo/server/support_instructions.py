@@ -135,13 +135,17 @@ def format_working_hours_block() -> str:
     weekday = now.weekday()
     is_open = weekday < 5 and 9 <= now.hour < 17
     status = "open" if is_open else "closed"
-    hour = now.strftime("%I").lstrip("0") or "12"
+    # Round the spoken clock down to 15-minute blocks. The system prompt must be
+    # byte-identical across turns for OpenAI prompt caching to hit (lower TTFT);
+    # a to-the-minute clock near the top of the prompt busts the cache every turn.
+    rounded = now.replace(minute=(now.minute // 15) * 15, second=0, microsecond=0)
+    hour = rounded.strftime("%I").lstrip("0") or "12"
     today_label = now.strftime("%A, %B %d, %Y")
-    time_label = now.strftime(f"{hour}:%M %p").lower()
+    time_label = rounded.strftime(f"{hour}:%M %p").lower()
     today_name = now.strftime("%A")
     return (
         f"Current DateTime with Open/Closed status\n"
-        f"Today is {today_label}. Right now is {time_label} Central. We are **{status}** now.\n"
+        f"Today is {today_label}. Right now is about {time_label} Central. We are **{status}** now.\n"
         f"({today_name} is {'a business day' if weekday < 5 else 'the weekend'}; "
         f"regular hours Mon–Fri 9am–5pm Central.)"
     )

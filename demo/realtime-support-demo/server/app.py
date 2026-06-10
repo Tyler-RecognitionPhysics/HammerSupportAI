@@ -275,6 +275,40 @@ def health() -> dict:
     }
 
 
+@app.get("/api/warmup")
+async def warmup() -> dict:
+    """Keep-warm target (hit by Vercel cron every 5 min). Warms everything the
+    first voice turn needs so a real caller never pays the cold-start tax:
+    KB database in /tmp, BM25 retriever, voice tool executor, and the pooled
+    TLS connection to OpenAI."""
+    import time as _time
+
+    from knowledge_support.kb_bootstrap import ensure_support_kb_database
+
+    timings: dict[str, int] = {}
+    t0 = _time.perf_counter()
+    try:
+        ensure_support_kb_database(REPO_ROOT, db_path=_default_kb_db())
+        timings["kb_ms"] = int((_time.perf_counter() - t0) * 1000)
+
+        t1 = _time.perf_counter()
+        await asyncio.to_thread(get_retriever)
+        timings["retriever_ms"] = int((_time.perf_counter() - t1) * 1000)
+
+        t2 = _time.perf_counter()
+        from support_agent import _prewarm_openai_connection, prewarm_elevenlabs_session
+
+        await prewarm_elevenlabs_session(get_retriever)
+        await _prewarm_openai_connection()
+        timings["agent_ms"] = int((_time.perf_counter() - t2) * 1000)
+    except Exception as exc:
+        logging.getLogger(__name__).exception("warmup failed")
+        return {"ok": False, "error": str(exc), **timings}
+
+    timings["total_ms"] = int((_time.perf_counter() - t0) * 1000)
+    return {"ok": True, **timings}
+
+
 @app.get("/api/branding/hammer-wordmark.png")
 def hammer_wordmark() -> FileResponse:
     if not _HAMMER_WORDMARK.is_file():

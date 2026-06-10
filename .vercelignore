@@ -3,3 +3,13 @@ wiki/**
 raw/hammer-data/**
 email/**
 raw/support-data/hubspot-tickets/**
+api/index.py
+knowledge/data/**
+knowledge/fixtures/**
+knowledge/generated/**
+knowledge/learning/**
+knowledge/scripts/**
+knowledge_support/data/hubspot_tickets_sync.sqlite
+knowledge_support/data/hubspot_kb_sync.sqlite
+knowledge_support/data/slack_sync.sqlite
+knowledge_support/data/hubspot_budget.sqlite
