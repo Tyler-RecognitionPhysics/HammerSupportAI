@@ -24,7 +24,13 @@ def _agent_id() -> str:
 
 
 def _public_llm_base() -> str:
-    for key in ("SUPPORT_PUBLIC_BASE_URL", "TELEPHONY_PUBLIC_BASE_URL"):
+    """Base URL the ElevenLabs agent should call for its custom LLM.
+
+    The persistent sync host (Fly) is preferred: it is always warm, so voice
+    turns never pay a serverless cold start. Without this preference, every
+    fresh Vercel instance would re-point the agent back at Vercel.
+    """
+    for key in ("SUPPORT_VOICE_LLM_BASE_URL", "SUPPORT_SYNC_HOST_URL", "SUPPORT_PUBLIC_BASE_URL", "TELEPHONY_PUBLIC_BASE_URL"):
         base = os.environ.get(key, "").strip().rstrip("/")
         if base:
             return base
