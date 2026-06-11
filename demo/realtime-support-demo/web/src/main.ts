@@ -198,7 +198,7 @@ function decodeSpokenUrls(text: string): string {
 // their canonical destinations.
 const NAMED_LINKS: { re: RegExp; url: string }[] = [
   { re: /\b(?:log[- ]?in|sign[- ]?in) (?:link|page)\b/gi, url: CANONICAL_LOGIN_URL },
-  { re: /\b(?:password[- ]?reset|reset(?:[- ]password)?) (?:link|page)\b/gi, url: CANONICAL_RESET_URL },
+  { re: /\b(?:password[- ]?reset|reset[- ]password) (?:link|page)\b/gi, url: CANONICAL_RESET_URL },
 ];
 
 function nameKnownLinks(text: string): string {
