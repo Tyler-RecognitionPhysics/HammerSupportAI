@@ -5701,6 +5701,25 @@ mark.kb-used {
 .cal-chip--completed { background: #f1f5f9; border-left-color: #94a3b8; color: var(--text-dim); }
 .cal-chip--cancelled { background: var(--red-soft); border-left-color: var(--red); color: var(--red); text-decoration: line-through; }
 
+/* Billing / cancellation callbacks keep their status tint but get a flag-colored edge. */
+.cal-chip--cat-billing { border-left-color: #7c3aed; }
+.cal-chip--cat-cancellation { border-left-color: var(--red); }
+
+/* Category badge shown next to the contact name in agenda + list rows. */
+.cal-cat {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  vertical-align: 1px;
+}
+.cal-cat--billing { background: #f3e8ff; color: #6d28d9; }
+.cal-cat--cancellation { background: var(--red-soft); color: var(--red); }
+
 .cal-more {
   font: inherit;
   font-size: 0.68rem;

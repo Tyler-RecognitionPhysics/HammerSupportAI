@@ -148,31 +148,6 @@ def _classify_callback_reason(reason: str) -> str:
     return ""
 
 
-# A billing/cancellation request only belongs on the calendar when the customer
-# explicitly asked a live rep to reach out at a specific time. This phrasing in a
-# callback's reason/notes is what distinguishes a real timed callback from an
-# escalation the AI happened to log as a callback.
-_CALLBACK_INTENT_RE = re.compile(
-    r"\b(call(?:\s|-)?back|call me|call them|call the customer|give (?:me|them) a call|"
-    r"reach out|phone me|ring me|schedule a call|set up a call|book a call|"
-    r"speak (?:with|to) (?:someone|a rep|a person|an agent)|"
-    r"have (?:someone|a rep|a person|an agent) (?:call|reach|contact))\b",
-    re.IGNORECASE,
-)
-
-
-def _is_explicit_timed_callback(appt: dict[str, Any]) -> bool:
-    """True when the customer asked for a live rep to reach out at a specific time."""
-    # Needs a concrete time on the books...
-    if not str(appt.get("requested_at") or "").strip():
-        return False
-    # ...and clear callback intent in what the customer/AI recorded.
-    text = " ".join(
-        str(appt.get(k) or "") for k in ("reason", "notes", "requested_label")
-    )
-    return bool(_CALLBACK_INTENT_RE.search(text))
-
-
 def _callback_to_billing_row(appt: dict[str, Any], category: str) -> dict[str, Any]:
     """Normalize a callback appointment into the billing-card shape used by tickets."""
     status = str(appt.get("status") or "").lower()
@@ -645,15 +620,18 @@ def dashboard_billing_dismiss(item_key: str) -> dict[str, Any]:
 
 def dashboard_appointments(*, start: str = "", end: str = "", status: str = "", limit: int = 500) -> dict[str, Any]:
     appts = list_appointments(start=start, end=end, status=status, limit=limit)
-    # Billing/cancellation requests belong in the Billing & Cancellations panel,
-    # not the calendar. Keep one here only when the customer explicitly asked for a
-    # live rep to reach out at a specific time (a real scheduled callback);
-    # otherwise it's a billing/cancellation escalation and stays off the grid.
+    # Billing/cancellation callbacks live in the Billing & Cancellations panel AND
+    # on the calendar (when they carry a concrete time), so the team can see at a
+    # glance when the customer wants the call. Tag them with their category so the
+    # UI can badge them; drop only the ones with no time on the books — those are
+    # escalations that belong solely in the billing panel.
     visible = []
     for appt in appts:
         category = _classify_callback_reason(str(appt.get("reason") or ""))
-        if category and not _is_explicit_timed_callback(appt):
-            continue
+        if category:
+            if not str(appt.get("requested_at") or "").strip():
+                continue
+            appt = {**appt, "category": category}
         visible.append(appt)
     return {"appointments": visible}
 

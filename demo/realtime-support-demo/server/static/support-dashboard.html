@@ -13,8 +13,8 @@
     (function () {
       var link = document.getElementById("dashboardCss");
       link.href = location.pathname.indexOf("/debug/support-dashboard") !== -1
-        ? "/debug/support-dashboard.css?v=18"
-        : "/admin/support/dashboard.css?v=18";
+        ? "/debug/support-dashboard.css?v=19"
+        : "/admin/support/dashboard.css?v=19";
     })();
   </script>
 </head>
@@ -2886,10 +2886,17 @@
         </div>`).join("");
     }
 
+    function calCatBadge(a) {
+      if (a.category !== "billing" && a.category !== "cancellation") return "";
+      const label = a.category === "cancellation" ? "Cancellation" : "Billing";
+      return `<span class="cal-cat cal-cat--${a.category}">${label}</span>`;
+    }
+
     function calChipHtml(a) {
       const d = apptDate(a);
       const time = d ? fmtApptTime(d) : "";
-      return `<button class="cal-chip cal-chip--${a.status}" type="button" data-appt-id="${a.id}" title="${escapeHtml(calContactLabel(a))} — ${escapeHtml(a.reason || "")}">
+      const cat = (a.category === "billing" || a.category === "cancellation") ? ` cal-chip--cat-${a.category}` : "";
+      return `<button class="cal-chip cal-chip--${a.status}${cat}" type="button" data-appt-id="${a.id}" title="${escapeHtml(calContactLabel(a))} — ${escapeHtml(a.reason || "")}">
         <span class="cal-chip__time">${escapeHtml(time)}</span>
         <span class="cal-chip__label">${escapeHtml(calContactLabel(a))}</span>
       </button>`;
@@ -2969,7 +2976,7 @@
             <span class="cal-agenda__dur">${a.duration_min || 30}m</span>
           </span>
           <span class="cal-agenda__info">
-            <span class="cal-agenda__contact">${escapeHtml(calContactLabel(a))}</span>
+            <span class="cal-agenda__contact">${escapeHtml(calContactLabel(a))}${calCatBadge(a)}</span>
             <span class="cal-agenda__reason">${escapeHtml(a.reason || "No reason given")}</span>
             ${phone}
           </span>
@@ -2999,7 +3006,7 @@
         html += `<button class="cal-list__row" type="button" data-appt-id="${a.id}">
           <span class="cal-list__time">${escapeHtml(fmtApptTime(d))}</span>
           <span class="cal-list__main">
-            <span class="cal-list__contact">${escapeHtml(calContactLabel(a))}</span>
+            <span class="cal-list__contact">${escapeHtml(calContactLabel(a))}${calCatBadge(a)}</span>
             <span class="cal-list__reason">${escapeHtml(a.reason || "No reason given")}</span>
           </span>
           <span class="status-pill cal-pill--${a.status}">${escapeHtml(CAL_STATUS_LABELS[a.status] || a.status)}</span>
