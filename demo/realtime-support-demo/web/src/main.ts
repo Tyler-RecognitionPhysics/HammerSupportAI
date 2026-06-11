@@ -161,7 +161,20 @@ const SPOKEN_URL_RE = /\b[a-z0-9]+(?:\s+(?:dot|dash|hyphen|slash|underscore)\s+[
 
 const SPOKEN_TLDS = new Set(["com", "net", "org", "io", "co", "ca", "us", "dev", "app", "ai"]);
 
+// The voice model garbles addresses it reads aloud (e.g. dropping the "2" in
+// www2) — pin known Hammer pages to their exact canonical URLs.
+const CANONICAL_LOGIN_URL = "https://www2.hammer-corp.com/session/new";
+const CANONICAL_RESET_URL = "https://www2.hammer-corp.com/password_reset/new";
+
+function canonicalizeHammerUrl(url: string): string {
+  if (/^(?:www2?\.)?hammer-corp\.com\/session\/new\/?$/i.test(url)) return CANONICAL_LOGIN_URL;
+  if (/^(?:www2?\.)?hammer-corp\.com\/password_reset\/new\/?$/i.test(url)) return CANONICAL_RESET_URL;
+  return `https://${url}`;
+}
+
 function decodeSpokenUrls(text: string): string {
+  // "www two dot …" → "www2 dot …" so the host keeps its digit when decoded.
+  text = text.replace(/\bwww\s+two\b/gi, "www2");
   return text.replace(SPOKEN_URL_RE, (match) => {
     const tokens = match.trim().split(/\s+/).map((t) => t.toLowerCase());
     // Only treat it as a web address if it contains "dot <tld>".
@@ -175,8 +188,26 @@ function decodeSpokenUrls(text: string): string {
       else if (t === "underscore") url += "_";
       else url += t;
     }
-    return `[${url}](https://${url})`;
+    const href = canonicalizeHammerUrl(url);
+    return `[${href.replace(/^https:\/\//, "")}](${href})`;
   });
+}
+
+// Hannah names links instead of reading addresses aloud ("I've put the login
+// link on your screen"). Turn those names into clickable links pointing at
+// their canonical destinations.
+const NAMED_LINKS: { re: RegExp; url: string }[] = [
+  { re: /\b(?:log[- ]?in|sign[- ]?in) (?:link|page)\b/gi, url: CANONICAL_LOGIN_URL },
+  { re: /\b(?:password[- ]?reset|reset(?:[- ]password)?) (?:link|page)\b/gi, url: CANONICAL_RESET_URL },
+];
+
+function nameKnownLinks(text: string): string {
+  let out = text;
+  for (const { re, url } of NAMED_LINKS) {
+    re.lastIndex = 0;
+    out = out.replace(re, (m) => `[${m}](${url})`);
+  }
+  return out;
 }
 
 function linkify(raw: string): string {
@@ -418,7 +449,8 @@ function renderTranscript(): string {
       const roleClass = t.role === "user" ? "transcript__line--user" : "transcript__line--agent";
       const latestClass = i === lastIndex ? " transcript__line--latest" : "";
       const label = t.role === "user" ? "You" : "Hannah";
-      return `<div class="transcript__line ${roleClass}${latestClass}"><span class="transcript__role">${label}</span>${linkify(decodeSpokenUrls(t.text))}</div>`;
+      const text = t.role === "agent" ? nameKnownLinks(decodeSpokenUrls(t.text)) : decodeSpokenUrls(t.text);
+      return `<div class="transcript__line ${roleClass}${latestClass}"><span class="transcript__role">${label}</span>${linkify(text)}</div>`;
     })
     .join("");
 }
