@@ -50,9 +50,6 @@ let transcript: { role: "user" | "agent"; text: string }[] = [];
 // scrolls up to read history, in which case we preserve their position.
 let transcriptStickToBottom = true;
 let transcriptSavedScrollTop = 0;
-// Bring the live-conversation panel on screen once per call so the user never
-// has to hunt for it; after that, all scrolling happens inside the panel.
-let sessionPanelRevealed = false;
 let chatMessages: { role: "user" | "assistant"; content: string }[] = [];
 let chatSessionId = "";
 let chatBusy = false;
@@ -153,7 +150,34 @@ function escapeHtml(s: string): string {
 // safe use in href attributes; non-link text is escaped as usual, so this
 // stays XSS-safe.
 const LINKIFY_RE =
-  /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"]+)|(\bwww\.[^\s<>"]+)|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+  /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"]+)|(\bwww\.[^\s<>"]+)|(\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|ca|co|us|dev|app|ai)\b(?:\/[^\s<>"]*)?)|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+
+// The voice agent reads web addresses aloud ("www dot hammer dash corp dot com
+// slash session slash new"), so the transcript text contains no real URL for
+// linkify() to pick up. Decode spoken-form addresses back into markdown links
+// (clean label + https href) so they render as clickable anchors on screen,
+// while the audio keeps the natural spoken wording.
+const SPOKEN_URL_RE = /\b[a-z0-9]+(?:\s+(?:dot|dash|hyphen|slash|underscore)\s+[a-z0-9]+)+\b/gi;
+
+const SPOKEN_TLDS = new Set(["com", "net", "org", "io", "co", "ca", "us", "dev", "app", "ai"]);
+
+function decodeSpokenUrls(text: string): string {
+  return text.replace(SPOKEN_URL_RE, (match) => {
+    const tokens = match.trim().split(/\s+/).map((t) => t.toLowerCase());
+    // Only treat it as a web address if it contains "dot <tld>".
+    const hasTld = tokens.some((t, i) => t === "dot" && SPOKEN_TLDS.has(tokens[i + 1] ?? ""));
+    if (!hasTld) return match;
+    let url = "";
+    for (const t of tokens) {
+      if (t === "dot") url += ".";
+      else if (t === "dash" || t === "hyphen") url += "-";
+      else if (t === "slash") url += "/";
+      else if (t === "underscore") url += "_";
+      else url += t;
+    }
+    return `[${url}](https://${url})`;
+  });
+}
 
 function linkify(raw: string): string {
   let out = "";
@@ -166,7 +190,7 @@ function linkify(raw: string): string {
     if (m[2]) {
       // Markdown link: show the label, link to the URL.
       out += `<a href="${escapeHtml(m[2])}" target="_blank" rel="noopener noreferrer">${escapeHtml(m[1])}</a>`;
-    } else if (m[5]) {
+    } else if (m[6]) {
       const email = escapeHtml(token);
       out += `<a href="mailto:${email}">${email}</a>`;
     } else {
@@ -174,7 +198,7 @@ function linkify(raw: string): string {
       const trimmed = token.replace(/[.,;:!?)\]'"]+$/, "");
       const trailing = token.slice(trimmed.length);
       const safe = escapeHtml(trimmed);
-      const href = m[4] ? `https://${safe}` : safe;
+      const href = m[3] ? safe : `https://${safe}`;
       out += `<a href="${href}" target="_blank" rel="noopener noreferrer">${safe}</a>`;
       out += escapeHtml(trailing);
     }
@@ -394,7 +418,7 @@ function renderTranscript(): string {
       const roleClass = t.role === "user" ? "transcript__line--user" : "transcript__line--agent";
       const latestClass = i === lastIndex ? " transcript__line--latest" : "";
       const label = t.role === "user" ? "You" : "Hannah";
-      return `<div class="transcript__line ${roleClass}${latestClass}"><span class="transcript__role">${label}</span>${linkify(t.text)}</div>`;
+      return `<div class="transcript__line ${roleClass}${latestClass}"><span class="transcript__role">${label}</span>${linkify(decodeSpokenUrls(t.text))}</div>`;
     })
     .join("");
 }
@@ -406,7 +430,7 @@ function renderSessionPanel(live: boolean): string {
     <section class="help-session" aria-label="Live with Hannah">
       ${statusText ? `<p class="help-session__status" role="status">${escapeHtml(statusText)}</p>` : ""}
       <div class="hero-glass">
-        <div class="hero-glass__head">${escapeHtml(copy("rt_transcript_title", "Live conversation"))}</div>
+        <div class="hero-glass__head"><span class="hero-glass__live-dot" aria-hidden="true"></span>${escapeHtml(copy("rt_transcript_title", "Live conversation"))}</div>
         <div class="hero-glass__body" id="transcript-body" role="log" aria-live="polite" aria-relevant="additions text" tabindex="0">${renderTranscript()}</div>
         <div class="hero-glass__foot">
           <button id="btn-end" class="landing-cta landing-cta--end" type="button">${escapeHtml(copy("rt_end_call", "End call"))}</button>
@@ -442,7 +466,7 @@ function render(): void {
   }
 
   app.innerHTML = `
-    <div class="app-shell app-shell--landing">
+    <div class="app-shell app-shell--landing${live ? " app-shell--call" : ""}">
       ${renderHelpHeader()}
 
       <main class="landing-main">
@@ -526,15 +550,6 @@ function render(): void {
       field.addEventListener("change", sync);
     });
 
-  if (live && !sessionPanelRevealed) {
-    sessionPanelRevealed = true;
-    const panel = document.querySelector(".help-session");
-    if (panel) {
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      panel.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-    }
-  }
-
   const transcriptBody = document.getElementById("transcript-body");
   if (transcriptBody) {
     // The DOM is rebuilt on every render, so restore the right scroll position:
@@ -604,7 +619,6 @@ async function startVoice(): Promise<void> {
   transcript = [];
   transcriptStickToBottom = true;
   transcriptSavedScrollTop = 0;
-  sessionPanelRevealed = false;
   render();
   try {
     const { token } = await getConversationToken();
