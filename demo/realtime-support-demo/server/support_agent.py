@@ -324,14 +324,14 @@ def _pop_flushable(buf: str, *, first: bool) -> tuple[str, str]:
     if m:
         return buf[: m.end()], buf[m.end():]
     if first:
-        if len(buf) >= 30:
+        if len(buf) >= 20:
             m = _CLAUSE_END_RE.search(buf)
             if m:
                 return buf[: m.end()], buf[m.end():]
-        if len(buf) >= 90:
+        if len(buf) >= 60:
             # Never split mid-word (keeps email addresses whole for redaction).
             ws = buf.rfind(" ")
-            if ws > 30:
+            if ws > 20:
                 return buf[: ws + 1], buf[ws + 1:]
     return "", buf
 

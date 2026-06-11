@@ -377,6 +377,12 @@ async def warmup() -> dict:
         await prewarm_elevenlabs_session(get_retriever)
         await _prewarm_openai_connection()
         timings["agent_ms"] = int((_time.perf_counter() - t2) * 1000)
+
+        t3 = _time.perf_counter()
+        from support_vendors import prewarm_vendors
+
+        await asyncio.to_thread(prewarm_vendors)
+        timings["vendors_ms"] = int((_time.perf_counter() - t3) * 1000)
     except Exception as exc:
         logging.getLogger(__name__).exception("warmup failed")
         return {"ok": False, "error": str(exc), **timings}
@@ -520,10 +526,6 @@ def admin_support_css() -> FileResponse:
 
 @app.get("/admin/support")
 def admin_support_page() -> FileResponse:
-    from support_admin_auth import admin_auth_configured
-
-    if not admin_auth_configured():
-        raise HTTPException(404)
     path = _dashboard_html()
     if not path.is_file():
         raise HTTPException(404, "Support dashboard UI missing")

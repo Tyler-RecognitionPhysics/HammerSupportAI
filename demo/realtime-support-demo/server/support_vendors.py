@@ -176,6 +176,12 @@ def replace_vendors(vendors: list[dict[str, Any]]) -> dict[str, Any]:
 # --- AI grounding -------------------------------------------------------------
 
 
+def prewarm_vendors() -> int:
+    """Warm the vendor cache (on serverless this is the remote fetch from the
+    persistent host) so the first vendor question doesn't pay for it."""
+    return len(_vendors_for_ai())
+
+
 def _vendors_for_ai() -> list[dict[str, Any]]:
     """Serverless reads the live list from the persistent host (TTL cache);
     everything else reads the local file."""
@@ -228,10 +234,27 @@ def _match_name(vendor: dict[str, Any], norm_query: str) -> bool:
     return False
 
 
+def _vendor_verdict(vendor: dict[str, Any]) -> str:
+    """One unambiguous customer-facing sentence: does Hammer work with them or not."""
+    supported = str(vendor.get("supported") or "").strip().lower()
+    status = str(vendor.get("status") or "").strip().lower()
+    if supported == "yes":
+        return "YES — Hammer works with this vendor."
+    if supported == "no" or "cannot use" in status:
+        return "NO — Hammer does not work with this vendor."
+    if supported.startswith("pending"):
+        return "NOT CONFIRMED YET — say support for this vendor is pending confirmation and offer to log a ticket."
+    if "no longer" in supported:
+        return "NO — Hammer no longer works with this vendor."
+    if "fee" in supported:
+        return "YES — Hammer works with this vendor, but the vendor charges a fee on their side."
+    return f"Status: {vendor.get('supported') or 'Unknown'} — if unclear, offer to log a ticket to confirm."
+
+
 def vendor_context_block(query: str, *, max_chars: int = 2200) -> str:
     """Authoritative vendor data for the prompt. Returns '' for unrelated turns.
 
-    Specific vendor mentioned -> full details for the matches.
+    Specific vendor mentioned -> simple works-with verdict for the matches.
     Generic vendor question   -> count + supported-vendor name list (capped).
     """
     q = (query or "").strip()
@@ -248,25 +271,17 @@ def vendor_context_block(query: str, *, max_chars: int = 2200) -> str:
         return ""
 
     header = (
-        "## Vendor & feed provider list (authoritative)\n"
-        "This is Hammer's official list of inventory/feed/website vendors. For any question about "
-        "whether Hammer works with, supports, or integrates with a vendor, answer ONLY from this data. "
+        "## Vendor & feed provider list (authoritative — overrides every other source)\n"
+        "This is Hammer's official list of inventory/feed/website vendors. For ANY question about "
+        "whether Hammer works with, supports, or integrates with a vendor, answer ONLY from this data, "
+        "even if tickets or other context above say something different. Keep the answer simple: just "
+        "whether Hammer works with that vendor. Do NOT mention APIs, API setup, integration methods, "
+        "feed mechanics, or any internal technical details — that is unnecessary for the customer. "
         "If a vendor is not in this list, say you're not sure and offer to log a ticket to confirm.\n"
     )
 
     if matches:
-        lines = []
-        for v in matches[:6]:
-            parts = [f"- {v.get('name')}: works with Hammer — {v.get('supported') or 'Unknown'}."]
-            if v.get("country"):
-                parts.append(f"Country: {v['country']}.")
-            if v.get("integration"):
-                parts.append(f"Integration: {v['integration']}.")
-            if v.get("status"):
-                parts.append(f"Feed status: {v['status']}.")
-            if v.get("notes"):
-                parts.append(f"Notes: {v['notes']}.")
-            lines.append(" ".join(parts))
+        lines = [f"- {v.get('name')}: {_vendor_verdict(v)}" for v in matches[:6]]
         return (header + "\n".join(lines))[:max_chars]
 
     supported = sorted(
