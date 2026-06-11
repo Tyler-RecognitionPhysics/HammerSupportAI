@@ -36,15 +36,12 @@ def admin_token_from_request(request: Request) -> str:
 
 
 def require_admin_auth(request: Request) -> None:
-    secret = admin_secret()
-    if not secret:
-        raise HTTPException(
-            status_code=503,
-            detail="Admin dashboard is not configured — set SUPPORT_ADMIN_SECRET.",
-        )
-    token = admin_token_from_request(request)
-    if not token or not hmac.compare_digest(token, secret):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    """Password protection disabled — the dashboard is open to anyone with the URL.
+
+    Kept as a no-op so every route's `require_admin_auth(request)` call keeps
+    working; re-enable by restoring the SUPPORT_ADMIN_SECRET check here.
+    """
+    return None
 
 
 def verify_admin_token(token: str) -> bool:

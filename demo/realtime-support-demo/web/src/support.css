@@ -720,9 +720,6 @@ body {
 .help-session {
   width: min(680px, 100%);
   margin-top: 32px;
-  /* The panel is auto-scrolled into view when a call connects (main.ts) — land
-     it just below the fixed header so the whole conversation card is on screen. */
-  scroll-margin-top: calc(var(--help-header-h) + 16px);
 }
 
 .help-session__status {
@@ -730,6 +727,109 @@ body {
   font-size: 14px;
   color: var(--hc-muted);
   margin-bottom: 12px;
+}
+
+/* ─── Call mode: while a voice call is live the page locks to one viewport.
+   The hero copy, chat/voice picker, ticket fallback, and footer step aside so
+   the live conversation owns the screen — the transcript fills the remaining
+   height and scrolls internally (pinned to the newest line), never the page. */
+.app-shell--call {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.app-shell--call .landing-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  justify-content: flex-start;
+}
+
+.app-shell--call .help-hero__intro,
+.app-shell--call .hero-chat,
+.app-shell--call .support-fallback,
+.app-shell--call .site-footer {
+  display: none;
+}
+
+.app-shell--call .help-hero {
+  flex: 0 0 auto;
+  animation: none;
+}
+
+/* Notices/errors (e.g. mic problems) still surface above the conversation. */
+.app-shell--call .help-hero:not(:has(.support-notice)):not(:has(.help-session__error)) {
+  display: none;
+}
+
+.app-shell--call .help-session {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  margin-top: 0;
+  animation: help-hero-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app-shell--call .help-session__status {
+  flex: 0 0 auto;
+}
+
+.app-shell--call .hero-glass {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell--call .hero-glass__head {
+  flex: 0 0 auto;
+}
+
+.app-shell--call .hero-glass__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+/* End-call becomes an anchored control bar at the bottom of the card. */
+.app-shell--call .hero-glass__foot {
+  flex: 0 0 auto;
+  padding: 0.8rem 1.25rem;
+  border-top: 1px solid var(--hc-line);
+  background: #fafafa;
+}
+
+.hero-glass__live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hc-accent);
+  margin-right: 8px;
+  vertical-align: 1px;
+  animation: live-dot-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes live-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-glass__live-dot {
+    animation: none;
+  }
+
+  .app-shell--call .help-session {
+    animation: none;
+  }
 }
 
 .hero-glass {

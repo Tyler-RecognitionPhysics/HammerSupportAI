@@ -8,33 +8,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/admin/support/dashboard.css?v=16" id="dashboardCss" />
+  <link rel="stylesheet" href="/admin/support/dashboard.css?v=18" id="dashboardCss" />
   <script>
     (function () {
       var link = document.getElementById("dashboardCss");
       link.href = location.pathname.indexOf("/debug/support-dashboard") !== -1
-        ? "/debug/support-dashboard.css?v=16"
-        : "/admin/support/dashboard.css?v=16";
+        ? "/debug/support-dashboard.css?v=18"
+        : "/admin/support/dashboard.css?v=18";
     })();
   </script>
 </head>
 <body>
-  <div class="login-gate" id="loginGate">
-    <div class="login-card">
-      <div class="login-card__brand">
-        <span class="login-card__logo" role="img" aria-label="Hammer"></span>
-      </div>
-      <h2>Support Control</h2>
-      <form id="loginForm" autocomplete="on">
-        <input type="password" id="loginPassword" name="password" placeholder="Admin password" autocomplete="current-password" />
-        <p class="login-error" id="loginError" hidden></p>
-        <button class="btn btn--primary btn--red" id="btnLogin" type="submit" style="width:100%">Enter</button>
-      </form>
-      <p class="settings-note" style="margin-top:1rem;margin-bottom:0">Private admin access only.</p>
-    </div>
-  </div>
-
-  <div id="appShell" style="visibility:hidden">
+  <div id="appShell">
     <header class="topbar">
       <div class="topbar__inner">
         <a class="topbar__brand" href="/" aria-label="Hammer home">
@@ -72,23 +57,23 @@
 
         <section class="panel is-active" id="panel-overview" role="tabpanel">
           <div class="stats" id="statGrid"></div>
-          <div class="grid-2">
-            <div class="card">
-              <div class="card__head">Live Activity</div>
-              <div class="card__body" id="activityFeed">
-                <div class="empty">No activity yet — start a support session to see what Hannah is doing.</div>
+          <div class="ov-grid">
+            <div class="card ov-activity">
+              <div class="card__head">Recent Activity</div>
+              <div class="card__body ov-activity__body" id="activityFeed">
+                <div class="empty">No activity yet — recent sessions will show up here.</div>
               </div>
             </div>
-            <div class="card">
-              <div class="card__head">Channels · 7 days</div>
-              <div class="card__body" id="channelBreakdown">
-                <div class="empty">No channel data yet.</div>
+            <div class="ov-side">
+              <div class="card">
+                <div class="card__head">Channel Mix · 7 Days</div>
+                <div class="card__body" id="channelMix">
+                  <div class="empty">No channel data yet.</div>
+                </div>
               </div>
-            </div>
-          </div>
-          <div class="card integrations" style="margin-top:1rem">
-            <div class="card__head">Integrations &amp; Sync</div>
-            <div class="integrations__list">
+              <div class="card integrations">
+                <div class="card__head">Integrations &amp; Sync</div>
+                <div class="integrations__list">
               <!-- Ordered by AI retrieval priority: official KB first, Slack threads next, resolved tickets last. -->
               <div class="integration">
                 <div class="integration__main" id="hubspotKbStatus"><div class="empty">Loading…</div></div>
@@ -121,6 +106,8 @@
                     <div class="progressbar__fill" id="hubspotTicketsProgressFill"></div>
                   </div>
                   <div class="sync-progress__msg" id="hubspotTicketsProgressMsg"></div>
+                </div>
+              </div>
                 </div>
               </div>
             </div>
@@ -237,8 +224,7 @@
         </section>
 
         <section class="panel" id="panel-knowledge" role="tabpanel">
-          <div class="stats" id="kbStatGrid"></div>
-          <div class="kb-source-summary" id="kbSourceSummary"></div>
+          <div class="kb-overview" id="kbOverview"></div>
           <nav class="kb-subnav" role="tablist" aria-label="Knowledge sections">
             <button class="kb-subnav__btn is-active" data-kb-tab="sources" role="tab">Sources</button>
             <button class="kb-subnav__btn" data-kb-tab="search" role="tab">Test AI</button>
@@ -482,28 +468,73 @@
         </section>
 
         <section class="panel" id="panel-settings" role="tabpanel">
-          <p class="settings-note">Prompt and model overrides for the support voice and chat agents.</p>
+          <p class="settings-intro">Control how Hannah behaves. Changes apply to new conversations as soon as you save — no restart needed.</p>
 
-          <div class="settings-section">
-            <div class="settings-section__label">LLM Model</div>
-            <div class="field-row">
-              <input type="text" id="settingModel" placeholder="gpt-4o-mini" />
+          <div class="settings-stack">
+            <div class="card settings-card">
+              <div class="settings-card__head">
+                <div class="settings-card__heading">
+                  <h3 class="settings-card__title">AI model</h3>
+                  <p class="settings-card__desc">The OpenAI model that powers both chat and voice answers.</p>
+                </div>
+                <span class="settings-chip" id="settingModelChip" hidden></span>
+              </div>
+              <div class="settings-card__body">
+                <div class="field-row">
+                  <input type="text" id="settingModel" placeholder="gpt-4o-mini" autocomplete="off" spellcheck="false" />
+                  <button class="btn btn--sm btn--ghost settings-usedefault" id="settingModelDefault" type="button" title="Use the server default">Use default</button>
+                </div>
+                <p class="settings-card__hint" id="settingModelHint"></p>
+              </div>
+            </div>
+
+            <div class="card settings-card">
+              <div class="settings-card__head">
+                <div class="settings-card__heading">
+                  <h3 class="settings-card__title">Voice prompt</h3>
+                  <p class="settings-card__desc">Hannah's instructions on phone calls — her personality, rules, and what she's allowed to do.</p>
+                </div>
+                <span class="settings-chip" id="settingVoiceChip" hidden></span>
+              </div>
+              <div class="settings-card__body">
+                <textarea id="settingVoice" class="settings-textarea" spellcheck="false" rows="14"></textarea>
+                <div class="settings-card__foot">
+                  <span class="settings-card__count" id="settingVoiceCount"></span>
+                  <button class="btn btn--sm btn--ghost settings-usedefault" id="settingVoiceDefault" type="button" title="Replace with the built-in default prompt">Use default</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card settings-card">
+              <div class="settings-card__head">
+                <div class="settings-card__heading">
+                  <h3 class="settings-card__title">Chat prompt</h3>
+                  <p class="settings-card__desc">Hannah's instructions in the website chat — tone, formatting, and escalation rules.</p>
+                </div>
+                <span class="settings-chip" id="settingChatChip" hidden></span>
+              </div>
+              <div class="settings-card__body">
+                <textarea id="settingChat" class="settings-textarea" spellcheck="false" rows="14"></textarea>
+                <div class="settings-card__foot">
+                  <span class="settings-card__count" id="settingChatCount"></span>
+                  <button class="btn btn--sm btn--ghost settings-usedefault" id="settingChatDefault" type="button" title="Replace with the built-in default prompt">Use default</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-dangerrow">
+              <button class="btn btn--sm btn--ghost settings-resetall" id="btnResetSettings" type="button">Reset everything to defaults…</button>
             </div>
           </div>
 
-          <div class="settings-section">
-            <div class="settings-section__label">Voice Prompt</div>
-            <textarea id="settingVoice" spellcheck="false" rows="8"></textarea>
-          </div>
-
-          <div class="settings-section">
-            <div class="settings-section__label">Chat Prompt</div>
-            <textarea id="settingChat" spellcheck="false" rows="8"></textarea>
-          </div>
-
-          <div class="btn-row">
-            <button class="btn btn--primary btn--red" id="btnSaveSettings" type="button">Save Settings</button>
-            <button class="btn btn--ghost" id="btnResetSettings" type="button">Reset to Defaults</button>
+          <div class="settings-savebar" id="settingsSavebar" hidden>
+            <span class="settings-savebar__dot" aria-hidden="true"></span>
+            <span class="settings-savebar__text">You have unsaved changes</span>
+            <span class="settings-savebar__hint">Ctrl+S to save</span>
+            <div class="settings-savebar__actions">
+              <button class="btn btn--sm btn--ghost" id="btnDiscardSettings" type="button">Discard</button>
+              <button class="btn btn--sm btn--primary btn--red" id="btnSaveSettings" type="button">Save changes</button>
+            </div>
           </div>
         </section>
       </main>
@@ -692,14 +723,12 @@
 
   <script>
     const API = "/api/admin/support";
-    const TOKEN_KEY = "support_admin_token";
     const PAGE_TITLES = { overview: "Overview", sessions: "Sessions", calendar: "Calendar", billing: "Billing & Cancellations", knowledge: "Knowledge", vendors: "Vendors", "cs-questions": "CS Questions", qa: "Questions & Answers", settings: "Settings" };
     let csqPollTimer = null;
     let ticketsPollTimer = null;
     let csqData = null;
     let csqOpenGroups = new Set();
     let csqGroupsInitialized = false;
-    let token = sessionStorage.getItem(TOKEN_KEY) || "";
     let cachedCalls = [];
     let sessionFilter = "all";
     let cachedKbDocs = [];
@@ -746,18 +775,9 @@
 
     const $ = (sel) => document.querySelector(sel);
 
-    function authHeaders(extra) {
-      const h = { "Content-Type": "application/json", ...(extra || {}) };
-      if (token) h.Authorization = "Bearer " + token;
-      return h;
-    }
-
     async function api(path, opts = {}) {
-      const res = await fetch(API + path, { ...opts, headers: authHeaders(opts.headers) });
-      if (res.status === 401) {
-        showLogin();
-        throw new Error("Unauthorized");
-      }
+      const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+      const res = await fetch(API + path, { ...opts, headers });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || res.statusText);
@@ -802,18 +822,6 @@
       showToast._t = setTimeout(() => el.classList.remove("is-visible"), 2600);
     }
 
-    function showLogin() {
-      token = "";
-      sessionStorage.removeItem(TOKEN_KEY);
-      $("#loginGate").classList.remove("is-hidden");
-      $("#appShell").style.visibility = "hidden";
-    }
-
-    function showApp() {
-      $("#loginGate").classList.add("is-hidden");
-      $("#appShell").style.visibility = "visible";
-    }
-
     function isToday(iso) {
       if (!iso) return false;
       const d = new Date(iso);
@@ -843,16 +851,31 @@
       const todayCount = (calls || []).filter((c) => isToday(c.started_at)).length;
       const weekCount = (calls || []).filter((c) => withinDays(c.started_at, 7)).length;
 
+      // Mini bar sparkline: sessions per day across the last 7 days (oldest → today).
+      const dayCounts = new Array(7).fill(0);
+      (calls || []).forEach((c) => {
+        if (!c.started_at) return;
+        const age = Math.floor((Date.now() - new Date(c.started_at).getTime()) / 86400000);
+        if (age >= 0 && age < 7) dayCounts[6 - age] += 1;
+      });
+      const sparkMax = Math.max(...dayCounts, 1);
+      const spark = `<div class="stat__spark" aria-hidden="true">${dayCounts
+        .map((n) => `<span class="stat__spark-bar" style="height:${Math.max(Math.round((n / sparkMax) * 100), 8)}%" title="${n}"></span>`)
+        .join("")}</div>`;
+
       $("#statGrid").innerHTML = [
         { label: "Active Now", value: active, dot: active > 0 ? "live" : "", accent: active > 0, sub: active ? "in progress" : "idle" },
         { label: "Today", value: todayCount, sub: "sessions" },
-        { label: "Last 7 Days", value: weekCount, sub: "sessions" },
+        { label: "Last 7 Days", value: weekCount, sub: "sessions", extra: spark },
         { label: "Escalated", value: s.escalated || 0, dot: "red", sub: "handoffs" },
         { label: "Resolved", value: s.resolved || 0, dot: "green", sub: "closed" },
       ].map((item) => `
         <div class="stat${item.accent ? " stat--accent" : ""}">
           <div class="stat__label">${item.dot ? `<span class="stat__dot stat__dot--${item.dot}"></span>` : ""}${item.label}</div>
-          <div class="stat__value">${(Number(item.value) || 0).toLocaleString()}</div>
+          <div class="stat__row">
+            <div class="stat__value">${(Number(item.value) || 0).toLocaleString()}</div>
+            ${item.extra || ""}
+          </div>
           <div class="stat__sub">${escapeHtml(item.sub)}</div>
         </div>
       `).join("");
@@ -868,16 +891,77 @@
       }
     }
 
-    function renderChannels(channels) {
-      const el = $("#channelBreakdown");
-      const entries = Object.entries(channels || {});
-      if (!entries.length) {
+    const CHANNEL_MIX_COLORS = { browser: "var(--teal)", chat: "#6366f1", phone: "var(--green)", "": "var(--text-muted)" };
+
+    function renderChannelMix(calls) {
+      const el = $("#channelMix");
+      const entries = Object.entries(aggregateChannels(calls)).sort((a, b) => b[1] - a[1]);
+      const total = entries.reduce((sum, [, v]) => sum + v, 0);
+      if (!total) {
         el.innerHTML = '<div class="empty">No channel data yet.</div>';
         return;
       }
-      el.innerHTML = `<div class="channel-bar">${entries.map(([k, v]) =>
-        `<span class="channel-chip">${escapeHtml(channelLabel(k))} · ${v}</span>`
-      ).join("")}</div>`;
+      const seg = (k, v) => {
+        const color = CHANNEL_MIX_COLORS[channelDotClass(k)] || CHANNEL_MIX_COLORS[""];
+        return `<span class="chmix__seg" style="width:${(v / total) * 100}%;background:${color}" title="${escapeHtml(channelLabel(k))}: ${v}"></span>`;
+      };
+      const legend = entries.map(([k, v]) => {
+        const color = CHANNEL_MIX_COLORS[channelDotClass(k)] || CHANNEL_MIX_COLORS[""];
+        const pct = Math.round((v / total) * 100);
+        return `
+          <div class="chmix__item">
+            <span class="chmix__dot" style="background:${color}"></span>
+            <span class="chmix__name">${escapeHtml(channelLabel(k))}</span>
+            <span class="chmix__count">${v.toLocaleString()}</span>
+            <span class="chmix__pct">${pct}%</span>
+          </div>`;
+      }).join("");
+      el.innerHTML = `
+        <div class="chmix__bar" role="img" aria-label="Channel split over the last 7 days">${entries.map(([k, v]) => seg(k, v)).join("")}</div>
+        <div class="chmix__legend">${legend}</div>`;
+    }
+
+    function relTime(iso) {
+      if (!iso) return "";
+      const ms = Date.now() - new Date(iso).getTime();
+      if (isNaN(ms)) return "";
+      const mins = Math.floor(ms / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      if (days === 1) return "yesterday";
+      if (days < 7) return `${days}d ago`;
+      return fmtTime(iso);
+    }
+
+    function renderRecentActivity(calls) {
+      const el = $("#activityFeed");
+      const recent = [...(calls || [])]
+        .filter((c) => c.started_at)
+        .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+        .slice(0, 10);
+      if (!recent.length) {
+        el.innerHTML = '<div class="empty">No activity yet — recent sessions will show up here.</div>';
+        return;
+      }
+      el.innerHTML = recent.map((c) => {
+        let badge, badgeClass;
+        if (c.escalated) { badge = "Escalated"; badgeClass = "warn"; }
+        else if (c.resolved) { badge = "Resolved"; badgeClass = "success"; }
+        else { badge = "Open"; badgeClass = "neutral"; }
+        const cat = c.issue_category ? csqCategoryLabel(c.issue_category) : "Uncategorized";
+        const ticket = c.ticket_created ? ' · <span class="feed-item__ticket">Ticket created</span>' : "";
+        return `
+          <div class="feed-item feed-item--click" data-call-id="${escapeHtml(c.call_id)}" role="button" tabindex="0">
+            <div class="feed-item__head">
+              <span class="feed-item__badge feed-item__badge--${badgeClass}">${badge}</span>
+              <span class="feed-item__time">${escapeHtml(relTime(c.started_at))}</span>
+            </div>
+            <div class="feed-item__body"><span class="sess-channel"><span class="sess-channel__dot sess-channel__dot--${channelDotClass(c.channel)}"></span>${escapeHtml(channelLabel(c.channel))}</span> · ${escapeHtml(cat)}${ticket}</div>
+          </div>`;
+      }).join("");
     }
 
     function fmtSyncTime(v) {
@@ -1140,38 +1224,89 @@
 
     function renderKbStats(stats) {
       const s = stats || {};
-
       const emailTickets = Number(s.hubspot_email_tickets_count || 0);
       const totalTickets = Number(s.hubspot_tickets_count || 0);
       const emailPct = totalTickets ? Math.round((emailTickets / totalTickets) * 100) : 0;
-
-      $("#kbStatGrid").innerHTML = [
-        { label: "Documents", value: (s.total_docs || 0).toLocaleString(), sub: "indexed sources" },
-        { label: "Searchable Chunks", value: (s.total_chunks || 0).toLocaleString(), sub: "vector + keyword" },
-        { label: "Characters", value: formatChars(s.total_chars || 0), sub: "indexed text" },
-        { label: "Unique Terms", value: (s.unique_terms || 0).toLocaleString(), sub: "in search index" },
-        { label: "Email-worked Tickets", value: emailTickets.toLocaleString(), sub: totalTickets ? `${emailPct}% of tickets · richest fixes` : "worked via email" },
-      ].map((item) => `
-        <div class="stat">
-          <div class="stat__label">${item.label}</div>
-          <div class="stat__value">${escapeHtml(String(item.value))}</div>
-          <div class="stat__sub">${escapeHtml(item.sub)}</div>
-        </div>
-      `).join("");
-
       kbEmailTicketTotal = emailTickets;
-      $("#kbSourceSummary").innerHTML = [
-        { label: "Wiki", dot: "wiki", value: s.wiki_docs || 0 },
-        { label: "Slack", dot: "slack", value: s.slack_threads || s.slack_docs || 0 },
-        { label: "HubSpot KB", dot: "hubspot", value: s.hubspot_articles || 0 },
-        { label: "HubSpot Tickets", dot: "hubspot", value: s.hubspot_tickets_count || 0 },
-        { label: "Playbook", dot: "playbook", value: s.playbook_entries || 0 },
-      ].map((x) => `
-        <span class="kb-src-chip">
-          <span class="kb-source-dot kb-source-dot--${x.dot}"></span>${escapeHtml(x.label)} <strong>${(Number(x.value) || 0).toLocaleString()}</strong>
-        </span>
+
+      // One plain-language overview instead of index internals (chunks/terms/chars).
+      const breakdown = [
+        { label: "HubSpot Resolved Tickets", name: "Resolved tickets", dot: "hubspot", value: totalTickets, hint: "real fixes from past customer tickets" },
+        { label: "HubSpot KB", name: "Help articles", dot: "hubspot", value: Number(s.hubspot_articles || 0), hint: "official help-center articles" },
+        { label: "Wiki", name: "Wiki pages", dot: "wiki", value: Number(s.wiki_docs || 0), hint: "curated internal pages" },
+        { label: "Slack", name: "Slack threads", dot: "slack", value: Number(s.slack_threads || s.slack_docs || 0), hint: "support-channel conversations" },
+        { label: "Playbook", name: "Playbook answers", dot: "playbook", value: Number(s.playbook_entries || 0), hint: "approved answers from your team" },
+      ].filter((x) => x.value > 0);
+      const breakdownTotal = breakdown.reduce((sum, x) => sum + x.value, 0);
+      const totalDocs = Number(s.total_docs || 0) || breakdownTotal;
+
+      const bar = breakdown.map((x) => {
+        const pct = breakdownTotal ? (x.value / breakdownTotal) * 100 : 0;
+        return `<span class="kb-bar__seg kb-bar__seg--${x.dot}" style="width:${Math.max(pct, 1.25)}%" title="${escapeHtml(`${x.name}: ${x.value.toLocaleString()}`)}"></span>`;
+      }).join("");
+
+      const legend = breakdown.map((x) => `
+        <button type="button" class="kb-legend__row" data-kb-jump="${escapeHtml(x.label)}" title="Open this group in the source list">
+          <span class="kb-source-dot kb-source-dot--${x.dot}"></span>
+          <span class="kb-legend__name">${escapeHtml(x.name)}<span class="kb-legend__hint">${escapeHtml(x.hint)}</span></span>
+          <span class="kb-legend__count">${x.value.toLocaleString()}</span>
+          <span class="kb-legend__go" aria-hidden="true">›</span>
+        </button>
       `).join("");
+
+      $("#kbOverview").innerHTML = `
+        <div class="kb-overview__hero">
+          <div class="kb-overview__label">What Hannah knows</div>
+          <div class="kb-overview__value">${totalDocs.toLocaleString()}</div>
+          <div class="kb-overview__sub">sources she searches before answering a customer</div>
+          ${emailTickets ? `
+            <button type="button" class="kb-overview__email" data-kb-jump="__email" title="Open email-worked tickets">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+              <span><strong>${emailTickets.toLocaleString()}</strong> tickets worked via email — the richest fixes${emailPct ? ` (${emailPct}%)` : ""}</span>
+              <span class="kb-legend__go" aria-hidden="true">›</span>
+            </button>` : ""}
+        </div>
+        <div class="kb-overview__breakdown">
+          <div class="kb-overview__breakdown-label">Where it comes from</div>
+          <div class="kb-bar" role="img" aria-label="Knowledge sources by volume">${bar}</div>
+          <div class="kb-legend">${legend}</div>
+        </div>`;
     }
+
+    function kbJumpToGroup(target) {
+      // Make sure the Sources sub-tab is showing, then open + scroll to the group.
+      document.querySelectorAll(".kb-subnav__btn").forEach((b) => b.classList.toggle("is-active", b.dataset.kbTab === "sources"));
+      ["sources", "search", "playbook"].forEach((id) => {
+        const panel = $("#kb-panel-" + id);
+        if (panel) panel.hidden = id !== "sources";
+      });
+      let selector;
+      if (target === "__email") {
+        if (!kbEmailGroupOpen) {
+          kbEmailGroupOpen = true;
+          if (!kbEmailTicketDocs.length) loadEmailTickets(true);
+          else rerenderKbDocList();
+        }
+        selector = '.kb-source-group[data-kb-source="Email-worked Tickets"]';
+      } else {
+        kbOpenGroups.add(target);
+        rerenderKbDocList();
+        selector = `.kb-source-group[data-kb-source="${CSS.escape(target)}"]`;
+      }
+      // Scroll only the panel (the app shell is overflow:hidden — scrollIntoView
+      // would drag the clipped ancestors and break the layout).
+      const el = document.querySelector(selector);
+      const panel = $("#panel-knowledge");
+      if (el && panel) {
+        const top = el.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop - 10;
+        panel.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      }
+    }
+
+    $("#kbOverview")?.addEventListener("click", (event) => {
+      const jump = event.target.closest("[data-kb-jump]");
+      if (jump) kbJumpToGroup(jump.dataset.kbJump);
+    });
 
     function kbBadgeClass(label) {
       return ({
@@ -1292,14 +1427,11 @@
       // The playbook indexes as one file but holds many approved answers —
       // count entries so this matches the Playbook tab.
       if (kbPlaybookEntries.length && totals["Playbook"]) totals["Playbook"] = kbPlaybookEntries.length;
-      const summaryParts = KB_SOURCE_ORDER.filter((key) => totals[key]).map(
-        (key) => `${formatSourceCount(totals[key])} ${key}`
-      );
       const catalogTotal = Object.values(totals).reduce((a, b) => a + (Number(b) || 0), 0) || docs.length;
       const aiOn = KB_SOURCE_ORDER.filter((key) => kbSourceAiEnabled(key) && totals[key]).length;
       const aiMeta = `${aiOn} of ${KB_SOURCE_ORDER.filter((key) => totals[key]).length || KB_SOURCE_ORDER.length} source types on for AI`;
       $("#kbSourcesMeta").textContent = filtered.length === docs.length
-        ? `${formatSourceCount(catalogTotal)} source${catalogTotal === 1 ? "" : "s"} · ${aiMeta} · ${summaryParts.join(" · ") || "No sources"}`
+        ? `${formatSourceCount(catalogTotal)} source${catalogTotal === 1 ? "" : "s"} · ${aiMeta}`
         : `${filtered.length} of ${formatSourceCount(catalogTotal)} sources · ${aiMeta}`;
 
       if (!filtered.length) {
@@ -1861,7 +1993,8 @@
         }
       }
       renderStats(data, cachedCalls);
-      renderChannels(aggregateChannels(cachedCalls));
+      renderRecentActivity(cachedCalls);
+      renderChannelMix(cachedCalls);
       renderSlackStatus(data.slack_sync);
       renderHubspotKbStatus(data.hubspot_kb_sync);
       renderHubspotTicketsStatus(data.hubspot_tickets_sync);
@@ -2414,24 +2547,10 @@
       const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
       const cards = [
         { label: "Questions surfaced", value: questions.length, sub: "real customer topics" },
-      ];
-      if (rankAll) {
-        cards.push(
-          { label: "Inbound tickets", value: (resolvedTickets + openTickets).toLocaleString(), sub: "ranked demand (open + resolved)" },
-          { label: "Open tickets", value: openTickets.toLocaleString(), sub: "unresolved — counted in ranking" },
-        );
-      } else {
-        cards.push(
-          { label: "Customer-initiated", value: customerInitiated.toLocaleString(), sub: "inbound form / email / chat / call" },
-        );
-      }
-      cards.push(
+        { label: "Support tickets", value: totalAnalyzed.toLocaleString(), sub: supportPct ? `${supportPct}% of inbound pool` : "genuine support questions" },
         { label: "Excluded", value: excludedInternal.toLocaleString(), sub: "internal: reviews, sales, outreach" },
-        { label: "Support tickets", value: totalAnalyzed.toLocaleString(), sub: `${supportPct}% of inbound pool` },
-        { label: "LLM rejected", value: llmRejected.toLocaleString(), sub: "not customer questions" },
-        { label: "AI cache", value: data.cache_full_hit ? "Reused" : cacheHits.toLocaleString(), sub: data.cache_full_hit ? "no new OpenAI map calls" : `${cacheMisses.toLocaleString()} new` },
         { label: "Biggest category", value: topCat ? topCat[0] : "—", sub: topCat ? topCat[1].toLocaleString() + " tickets" : "" },
-      );
+      ];
       statGrid.innerHTML = cards.map((s) => `
         <div class="stat">
           <div class="stat__label">${escapeHtml(s.label)}</div>
@@ -2455,7 +2574,9 @@
         g.questions.push(q);
       });
       const arr = [...groups.values()];
-      arr.forEach((g) => g.questions.sort((a, b) => Number(b.count || 0) - Number(a.count || 0)));
+      // Match the backend's recency-weighted ranking (fall back to raw count for old builds).
+      const demand = (q) => Number(q.weighted ?? q.count ?? 0);
+      arr.forEach((g) => g.questions.sort((a, b) => demand(b) - demand(a) || Number(b.count || 0) - Number(a.count || 0)));
       arr.sort((a, b) => b.tickets - a.tickets);
       return arr;
     }
@@ -2480,11 +2601,17 @@
       const exampleBlock = examples
         ? `<tr class="csq-examples" data-csq-rank="${q.rank}" hidden><td></td><td colspan="3"><div style="font-size:0.8rem;color:var(--text-muted);padding:0.25rem 0 0.5rem"><div style="font-weight:600;margin-bottom:0.25rem">Example tickets <span style="font-weight:400">(click to open in HubSpot)</span></div><ul style="margin:0;padding-left:1.1rem;line-height:1.6">${examples}</ul></div></td></tr>`
         : "";
+      // Ranking is recency-weighted (recent tickets count more), so a question with
+      // fewer lifetime tickets can outrank an older one — the "recent" tag explains why.
+      const recent = Number(q.recent_count || 0);
+      const recentTag = recent > 0
+        ? `<div style="font-size:0.72rem;color:var(--text-muted);white-space:nowrap">${recent.toLocaleString()} in last 90d</div>`
+        : "";
       return `
         <tr class="csq-row" data-csq-rank="${q.rank}" style="cursor:pointer">
           <td class="csq-qnum">${num}</td>
           <td style="font-weight:600;color:var(--text)">${escapeHtml(q.question || "")}</td>
-          <td>${Number(q.count || 0).toLocaleString()}</td>
+          <td>${Number(q.count || 0).toLocaleString()}${recentTag}</td>
           <td>${q.share != null ? q.share + "%" : "—"}</td>
         </tr>${exampleBlock}`;
     }
@@ -2572,12 +2699,102 @@
       }, 4000);
     }
 
+    // Settings page state: server data + the values currently saved, so we can
+    // detect unsaved edits and show default-vs-custom per field.
+    let settingsData = null;
+    let settingsBaseline = { model: "", voice: "", chat: "" };
+
+    const SETTINGS_FIELDS = [
+      { key: "model", input: "#settingModel", chip: "#settingModelChip", overrideKey: "chat_model" },
+      { key: "voice", input: "#settingVoice", chip: "#settingVoiceChip", overrideKey: "support_voice_prompt", count: "#settingVoiceCount" },
+      { key: "chat", input: "#settingChat", chip: "#settingChatChip", overrideKey: "support_chat_prompt", count: "#settingChatCount" },
+    ];
+
+    function settingsDefaultFor(key) {
+      if (!settingsData) return "";
+      if (key === "model") return settingsData.env_default_model || "";
+      const d = settingsData.defaults || {};
+      return key === "voice" ? d.support_voice_prompt || "" : d.support_chat_prompt || "";
+    }
+
+    function settingsIsDirty() {
+      return (
+        $("#settingModel").value.trim() !== settingsBaseline.model ||
+        $("#settingVoice").value !== settingsBaseline.voice ||
+        $("#settingChat").value !== settingsBaseline.chat
+      );
+    }
+
+    function updateSettingsUi() {
+      if (!settingsData) return;
+      const overrides = settingsData.overrides || {};
+      SETTINGS_FIELDS.forEach((f) => {
+        const el = $(f.input);
+        const chip = $(f.chip);
+        if (chip) {
+          // "Custom" = a saved override is in effect; an unsaved edit shows in the save bar instead.
+          const hasOverride = Boolean(String(overrides[f.overrideKey] || "").trim());
+          chip.hidden = false;
+          chip.textContent = hasOverride ? "Custom" : "Default";
+          chip.classList.toggle("settings-chip--custom", hasOverride);
+        }
+        if (f.count) {
+          const n = (el.value || "").length;
+          $(f.count).textContent = n ? `${n.toLocaleString()} characters` : "";
+        }
+      });
+      const hint = $("#settingModelHint");
+      if (hint) {
+        const envModel = settingsData.env_default_model || "gpt-4o-mini";
+        hint.textContent = `Server default: ${envModel}. Leave as-is unless you need a different OpenAI model.`;
+      }
+      const savebar = $("#settingsSavebar");
+      if (savebar) savebar.hidden = !settingsIsDirty();
+    }
+
+    function applySettingsResponse(s) {
+      settingsData = s;
+      const e = s.effective || {};
+      settingsBaseline = {
+        model: (e.chat_model || "").trim(),
+        voice: e.support_voice_prompt || "",
+        chat: e.support_chat_prompt || "",
+      };
+      $("#settingModel").value = settingsBaseline.model;
+      $("#settingVoice").value = settingsBaseline.voice;
+      $("#settingChat").value = settingsBaseline.chat;
+      updateSettingsUi();
+    }
+
     async function refreshSettings() {
       const s = await api("/settings");
-      const e = s.effective || {};
-      $("#settingModel").value = e.chat_model || "";
-      $("#settingVoice").value = e.support_voice_prompt || "";
-      $("#settingChat").value = e.support_chat_prompt || "";
+      applySettingsResponse(s);
+    }
+
+    async function saveSettings() {
+      const btn = $("#btnSaveSettings");
+      if (!settingsIsDirty()) return;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = "Saving…";
+      try {
+        const res = await api("/settings", {
+          method: "PATCH",
+          body: JSON.stringify({
+            chat_model: $("#settingModel").value.trim(),
+            support_voice_prompt: $("#settingVoice").value,
+            support_chat_prompt: $("#settingChat").value,
+          }),
+        });
+        if (res && res.settings) applySettingsResponse(res.settings);
+        else await refreshSettings();
+        showToast("Saved — applies to new conversations");
+      } catch (err) {
+        showToast(err.message || "Save failed");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
     }
 
     // ── Calendar (customer callbacks) ──────────────────────────────────────
@@ -3209,28 +3426,6 @@
       await Promise.all([refreshOverview(), refreshSessions(), refreshKnowledge(), refreshSettings(), refreshCsQuestions(), refreshBilling().catch(() => {})]);
     }
 
-    $("#loginForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const secret = $("#loginPassword").value.trim();
-      const err = $("#loginError");
-      err.hidden = true;
-      $("#btnLogin").disabled = true;
-      token = secret;
-      sessionStorage.setItem(TOKEN_KEY, token);
-      try {
-        await api("/overview");
-        showApp();
-        await refreshAll();
-      } catch (ex) {
-        err.textContent = ex && ex.message === "Unauthorized" ? "Invalid password" : "Could not load dashboard — try again";
-        err.hidden = false;
-        token = "";
-        sessionStorage.removeItem(TOKEN_KEY);
-      } finally {
-        $("#btnLogin").disabled = false;
-      }
-    });
-
     // ----- Vendors -----
     let cachedVendors = [];
     let vndFilter = "all";
@@ -3547,6 +3742,16 @@
       if (event.target.closest("a")) return;
       const row = event.target.closest("tr[data-call-id]");
       if (row) openSessionDetail(row.dataset.callId);
+    });
+
+    $("#activityFeed").addEventListener("click", (event) => {
+      const item = event.target.closest(".feed-item[data-call-id]");
+      if (item) openSessionDetail(item.dataset.callId);
+    });
+    $("#activityFeed").addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const item = event.target.closest(".feed-item[data-call-id]");
+      if (item) { event.preventDefault(); openSessionDetail(item.dataset.callId); }
     });
 
     $("#sessionFilters")?.addEventListener("click", (event) => {
@@ -4384,27 +4589,48 @@
     $("#btnHubspotTicketsSync").addEventListener("click", () => runHubspotTicketsSync(false));
     $("#btnHubspotTicketsBackfill").addEventListener("click", () => runHubspotTicketsSync(true));
 
-    $("#btnSaveSettings").addEventListener("click", async () => {
-      try {
-        await api("/settings", {
-          method: "PATCH",
-          body: JSON.stringify({
-            chat_model: $("#settingModel").value.trim(),
-            support_voice_prompt: $("#settingVoice").value,
-            support_chat_prompt: $("#settingChat").value,
-          }),
-        });
-        showToast("Settings saved");
-      } catch (err) {
-        showToast(err.message || "Save failed");
+    $("#btnSaveSettings").addEventListener("click", () => void saveSettings());
+
+    $("#btnDiscardSettings").addEventListener("click", () => {
+      $("#settingModel").value = settingsBaseline.model;
+      $("#settingVoice").value = settingsBaseline.voice;
+      $("#settingChat").value = settingsBaseline.chat;
+      updateSettingsUi();
+    });
+
+    // Live dirty-tracking: the save bar appears the moment anything changes.
+    ["#settingModel", "#settingVoice", "#settingChat"].forEach((sel) => {
+      $(sel).addEventListener("input", updateSettingsUi);
+    });
+
+    // Per-field "Use default" fills the built-in value (still needs Save).
+    $("#settingModelDefault").addEventListener("click", () => {
+      $("#settingModel").value = settingsDefaultFor("model");
+      updateSettingsUi();
+    });
+    $("#settingVoiceDefault").addEventListener("click", () => {
+      $("#settingVoice").value = settingsDefaultFor("voice");
+      updateSettingsUi();
+    });
+    $("#settingChatDefault").addEventListener("click", () => {
+      $("#settingChat").value = settingsDefaultFor("chat");
+      updateSettingsUi();
+    });
+
+    // Ctrl+S / Cmd+S saves while the Settings tab is open.
+    document.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && document.querySelector("#panel-settings.is-active")) {
+        e.preventDefault();
+        void saveSettings();
       }
     });
 
     $("#btnResetSettings").addEventListener("click", async () => {
-      if (!confirm("Reset all prompt overrides to defaults?")) return;
+      if (!confirm("Reset ALL settings (model + both prompts) back to the built-in defaults? Your custom prompts will be lost.")) return;
       try {
-        await api("/settings/reset", { method: "POST" });
-        await refreshSettings();
+        const res = await api("/settings/reset", { method: "POST" });
+        if (res && res.settings) applySettingsResponse(res.settings);
+        else await refreshSettings();
         showToast("Defaults restored");
       } catch (err) {
         showToast(err.message || "Reset failed");
@@ -4417,17 +4643,11 @@
       $("#envBadge").textContent = "live";
     }
 
-    if (token) {
-      api("/overview").then(() => { showApp(); refreshAll(); }).catch(showLogin);
-    } else {
-      showLogin();
-    }
+    refreshAll().catch(() => {});
 
     setInterval(() => {
-      if (token) {
-        refreshOverview().catch(() => {});
-        refreshSessions().catch(() => {});
-      }
+      refreshOverview().catch(() => {});
+      refreshSessions().catch(() => {});
     }, 15000);
   </script>
 </body>

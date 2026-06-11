@@ -823,6 +823,9 @@ def dashboard_settings_get() -> dict[str, Any]:
     return {
         "defaults": defaults,
         "overrides": {k: overrides[k] for k in SETTING_KEYS if k in overrides},
+        # The model the server falls back to when no override is set — lets the
+        # dashboard show "default: X" even while a custom model is active.
+        "env_default_model": env_model,
         "effective": {
             "support_voice_prompt": overrides.get("support_voice_prompt") or defaults["support_voice_prompt"],
             "support_chat_prompt": overrides.get("support_chat_prompt") or defaults["support_chat_prompt"],

@@ -49,6 +49,19 @@ MAX_INPUT_SUBJECTS = int(os.environ.get("CS_QUESTIONS_MAX_SUBJECTS", "0") or "0"
 MIN_SUBJECT_COUNT = max(1, int(os.environ.get("CS_QUESTIONS_MIN_COUNT", "1") or "1"))
 # Concurrent OpenAI requests during map/reduce. Higher = faster, watch rate limits.
 LLM_CONCURRENCY = max(1, int(os.environ.get("CS_QUESTIONS_CONCURRENCY", "8") or "8"))
+# Recency half-life (days) for demand ranking: a ticket this old counts as half a
+# ticket, twice this old a quarter, etc. Raw counts are still reported; only the
+# RANKING uses the decayed weight, so current demand beats stale historical volume.
+# 0 disables recency weighting (legacy pure-count ranking).
+RECENCY_HALF_LIFE_DAYS = float(os.environ.get("CS_QUESTIONS_HALF_LIFE_DAYS", "365") or "365")
+# Cap how many tickets with the SAME normalized issue on the SAME day count toward
+# demand. One dealership filing a burst of duplicate tickets (or an email thread
+# splitting into several tickets) otherwise inflates that question's rank.
+# 0 disables the cap.
+MAX_PER_SUBJECT_PER_DAY = int(os.environ.get("CS_QUESTIONS_MAX_PER_SUBJECT_PER_DAY", "3") or "3")
+# Bump to invalidate the FINAL results cache when ranking logic changes, without
+# touching the per-item map cache (which only depends on classification logic).
+_RANKING_VERSION = "rank-v2-recency-dedupe-merge"
 # Ticket context snippets are longer than subjects; keep map prompts compact.
 MAP_BATCH_SIZE = max(20, int(os.environ.get("CS_QUESTIONS_MAP_BATCH_SIZE", "60") or "60"))
 _OPENAI_URL = "https://api.openai.com/v1/chat/completions"
@@ -68,6 +81,34 @@ _RE_HEADING = re.compile(r"^#{1,6}\s+")
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _parse_ticket_date(raw: str) -> datetime | None:
+    """Parse a HubSpot createdate (ISO string or epoch millis) to aware UTC."""
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    if s.isdigit():
+        try:
+            return datetime.fromtimestamp(int(s) / 1000.0, tz=timezone.utc)
+        except (ValueError, OSError, OverflowError):
+            return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _recency_weight(created_at: str, *, now: datetime) -> float:
+    """Exponential decay weight for demand ranking. Unknown dates count fully."""
+    if RECENCY_HALF_LIFE_DAYS <= 0:
+        return 1.0
+    dt = _parse_ticket_date(created_at)
+    if dt is None:
+        return 1.0
+    age_days = max((now - dt).total_seconds() / 86400.0, 0.0)
+    return 0.5 ** (age_days / RECENCY_HALF_LIFE_DAYS)
 
 
 def _sha256(text: str) -> str:
@@ -588,7 +629,7 @@ def read_all_ticket_rows() -> list[dict[str, str]]:
                 return read_ticket_rows()
             rows = conn.execute(
                 """
-                SELECT a.ticket_id, a.subject, a.stage_id, a.content, t.file_name
+                SELECT a.ticket_id, a.subject, a.stage_id, a.content, t.file_name, a.created_at
                 FROM hubspot_all_tickets a
                 LEFT JOIN hubspot_tickets t ON t.ticket_id = a.ticket_id
                 """
@@ -612,6 +653,7 @@ def read_all_ticket_rows() -> list[dict[str, str]]:
                     "stage_id": stage_id,
                     "content": content,
                     "file_name": file_name,
+                    "created_at": str(row[5] or "").strip(),
                     # Resolved tickets are the ones with a synced markdown file.
                     "is_closed": "1" if file_name else "",
                 }
@@ -721,7 +763,11 @@ def _ticket_issue_text(row: dict[str, str]) -> tuple[str, bool, bool]:
     body = ""
     if path:
         try:
-            _, body = _split_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+            meta, body = _split_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+            # Backfill the created date for recency weighting when the row reader
+            # (resolved-only path) had no created_at column.
+            if not str(row.get("created_at") or "").strip() and meta.get("created_at"):
+                row["created_at"] = meta["created_at"]
         except OSError:
             body = ""
 
@@ -751,8 +797,16 @@ def _ticket_issue_text(row: dict[str, str]) -> tuple[str, bool, bool]:
 
 
 def aggregate_subjects(rows: list[dict[str, str]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """Collapse to unique normalized customer questions with counts + example tickets."""
+    """Collapse to unique normalized customer questions with counts + example tickets.
+
+    Each subject also carries a recency-decayed ``weighted`` demand score (recent
+    tickets count more than old ones) and same-day duplicate bursts of the same
+    issue are capped so one customer can't inflate a question's rank.
+    """
     counts: Counter[str] = Counter()
+    weighted: dict[str, float] = {}
+    recent_counts: Counter[str] = Counter()
+    day_counts: Counter[tuple[str, str]] = Counter()
     examples: dict[str, list[dict[str, str]]] = {}
     seen_ids: dict[str, set[str]] = {}
     display_text: dict[str, str] = {}
@@ -762,7 +816,9 @@ def aggregate_subjects(rows: list[dict[str, str]]) -> tuple[list[dict[str, Any]]
         "ticket_text_enriched": 0,
         "resolved_tickets": 0,
         "open_tickets": 0,
+        "same_day_duplicates_capped": 0,
     }
+    now = datetime.now(timezone.utc)
     for row in rows:
         raw = str(row.get("subject") or "")
         ticket_id = str(row.get("ticket_id") or "").strip()
@@ -781,7 +837,25 @@ def aggregate_subjects(rows: list[dict[str, str]]) -> tuple[list[dict[str, Any]]
         if not norm or len(norm) < 3:
             stats["excluded_internal"] += 1
             continue
-        counts[norm] += 1
+
+        created_at = str(row.get("created_at") or "").strip()
+        created_dt = _parse_ticket_date(created_at)
+        # Same issue, same day, beyond the cap → almost certainly a duplicate
+        # burst (one customer re-submitting / an email thread splitting). Still
+        # shown as an example ticket, just not counted toward demand again.
+        counted = True
+        if MAX_PER_SUBJECT_PER_DAY > 0 and created_dt is not None:
+            day_key = (norm, created_dt.strftime("%Y-%m-%d"))
+            day_counts[day_key] += 1
+            if day_counts[day_key] > MAX_PER_SUBJECT_PER_DAY:
+                counted = False
+                stats["same_day_duplicates_capped"] += 1
+
+        if counted:
+            counts[norm] += 1
+            weighted[norm] = weighted.get(norm, 0.0) + _recency_weight(created_at, now=now)
+            if created_dt is not None and (now - created_dt).days <= 90:
+                recent_counts[norm] += 1
         display_text.setdefault(norm, issue_text)
         bucket = examples.setdefault(norm, [])
         ids = seen_ids.setdefault(norm, set())
@@ -803,6 +877,8 @@ def aggregate_subjects(rows: list[dict[str, str]]) -> tuple[list[dict[str, Any]]
             "example": examples[norm][0]["subject"] if examples.get(norm) else norm,
             "tickets": examples.get(norm, []),
             "count": n,
+            "weighted": round(weighted.get(norm, float(n)), 3),
+            "recent_count": recent_counts.get(norm, 0),
         }
         for norm, n in counts.most_common()
     ]
@@ -950,7 +1026,9 @@ def _input_signature(items: list[dict[str, Any]]) -> str:
     for it in items:
         issue_hash = str(it.get("issue_hash") or _map_cache_key(it))
         parts.append(f"{issue_hash}:{int(it.get('count') or 0)}")
-    return _sha256(f"{_BUILD_VERSION}|{_model()}|" + "\n".join(parts))
+    # _RANKING_VERSION invalidates final results when ranking logic changes,
+    # WITHOUT touching the per-item map cache (no expensive LLM re-classification).
+    return _sha256(f"{_BUILD_VERSION}|{_RANKING_VERSION}|{_model()}|" + "\n".join(parts))
 
 
 def _apply_mapping_to_labels(
@@ -967,9 +1045,13 @@ def _apply_mapping_to_labels(
     key = q.lower()
     bucket = labels.setdefault(
         key,
-        {"label": key, "count": 0, "category": cat, "examples": []},
+        {"label": key, "count": 0, "weighted": 0.0, "recent_count": 0, "category": cat, "examples": []},
     )
     bucket["count"] += int(item.get("count") or 1)
+    bucket["weighted"] = float(bucket.get("weighted") or 0.0) + float(
+        item.get("weighted") or item.get("count") or 1
+    )
+    bucket["recent_count"] = int(bucket.get("recent_count") or 0) + int(item.get("recent_count") or 0)
     bucket.setdefault("category", cat)
     _merge_example_tickets(bucket["examples"], item.get("tickets") or [], _EXAMPLES_PER_QUESTION)
 
@@ -1004,6 +1086,8 @@ def _map_subjects_to_questions(items: list[dict[str, Any]]) -> tuple[dict[str, d
         return label_info, stats
 
     label_counts: Counter[str] = Counter()
+    label_weighted: dict[str, float] = {}
+    label_recent: Counter[str] = Counter()
     label_category: dict[str, str] = {}
     label_examples: dict[str, list[dict[str, str]]] = {}
 
@@ -1040,6 +1124,10 @@ def _map_subjects_to_questions(items: list[dict[str, Any]]) -> tuple[dict[str, d
                 continue
             key = normalized["q"].lower()
             label_counts[key] += int(it.get("count") or 1)
+            label_weighted[key] = label_weighted.get(key, 0.0) + float(
+                it.get("weighted") or it.get("count") or 1
+            )
+            label_recent[key] += int(it.get("recent_count") or 0)
             label_category.setdefault(key, normalized["c"])
             ex = label_examples.setdefault(key, [])
             _merge_example_tickets(ex, it.get("tickets") or [], _EXAMPLES_PER_QUESTION)
@@ -1050,17 +1138,100 @@ def _map_subjects_to_questions(items: list[dict[str, Any]]) -> tuple[dict[str, d
                 continue
 
     for key, cnt in label_counts.items():
+        prev = label_info.get(key, {})
         label_info[key] = {
             "label": key,
-            "count": label_info.get(key, {}).get("count", 0) + cnt,
-            "category": label_category.get(key, "other"),
-            "examples": label_info.get(key, {}).get("examples", []),
+            "count": prev.get("count", 0) + cnt,
+            "weighted": float(prev.get("weighted") or 0.0) + label_weighted.get(key, float(cnt)),
+            "recent_count": int(prev.get("recent_count") or 0) + label_recent.get(key, 0),
+            "category": prev.get("category") or label_category.get(key, "other"),
+            "examples": prev.get("examples", []),
         }
         _merge_example_tickets(label_info[key]["examples"], label_examples.get(key, []), _EXAMPLES_PER_QUESTION)
 
     set_cs_question_map_cache(model, cache_rows)
     stats["map_cache_writes"] = len(cache_rows)
     return label_info, stats
+
+
+def _new_question_bucket(question: str, category: Any) -> dict[str, Any]:
+    return {
+        "question": question,
+        "category": str(category or "other").strip().lower() or "other",
+        "count": 0,
+        "weighted": 0.0,
+        "recent_count": 0,
+        "examples": [],
+    }
+
+
+def _fold_question_bucket(dst: dict[str, Any], src: dict[str, Any]) -> None:
+    """Fold one label/question bucket's demand into another."""
+    dst["count"] = int(dst.get("count") or 0) + int(src.get("count") or 0)
+    dst["weighted"] = float(dst.get("weighted") or 0.0) + float(
+        src.get("weighted") or src.get("count") or 0
+    )
+    dst["recent_count"] = int(dst.get("recent_count") or 0) + int(src.get("recent_count") or 0)
+    if (dst.get("category") or "other") == "other" and (src.get("category") or "other") != "other":
+        dst["category"] = src["category"]
+    _merge_example_tickets(dst["examples"], src.get("examples") or [], _EXAMPLES_PER_QUESTION)
+
+
+# Only the head of the consolidated list goes through the final merge pass — the
+# output is capped at TOP_N anyway, and keeping the listing small keeps the LLM
+# call reliable.
+_FINAL_MERGE_LIMIT = 240
+
+
+def _merge_final_groups(final: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """One last LLM pass over consolidated questions to merge cross-chunk duplicates."""
+    ordered = sorted(
+        final.items(),
+        key=lambda kv: (float(kv[1].get("weighted") or 0.0), int(kv[1].get("count") or 0)),
+        reverse=True,
+    )
+    head = ordered[:_FINAL_MERGE_LIMIT]
+    tail = ordered[_FINAL_MERGE_LIMIT:]
+    listing = "\n".join(f"- {bucket['question']}" for _, bucket in head)
+    try:
+        data = _openai_json(
+            [
+                {"role": "system", "content": _REDUCE_SYSTEM},
+                {"role": "user", "content": f"Labels:\n{listing}"},
+            ],
+            max_tokens=12000,
+        )
+        groups = data.get("groups") or []
+    except Exception as exc:
+        _log.warning("cs_questions final merge pass failed: %s", exc)
+        return final
+
+    head_map = dict(head)
+    merged: dict[str, dict[str, Any]] = {}
+    assigned: set[str] = set()
+    for g in groups:
+        canonical = str(g.get("canonical") or "").strip()
+        if not canonical:
+            continue
+        bucket = merged.setdefault(
+            canonical.lower(), _new_question_bucket(canonical, g.get("category"))
+        )
+        for mlbl in g.get("members") or []:
+            mkey = str(mlbl or "").strip().lower()
+            if mkey in head_map and mkey not in assigned:
+                assigned.add(mkey)
+                _fold_question_bucket(bucket, head_map[mkey])
+    # Anything the model dropped (or that was beyond the merge window) stays as-is.
+    for mkey, info in head:
+        if mkey in assigned:
+            continue
+        bucket = merged.setdefault(mkey, _new_question_bucket(info["question"], info["category"]))
+        _fold_question_bucket(bucket, info)
+    for mkey, info in tail:
+        bucket = merged.setdefault(mkey, _new_question_bucket(info["question"], info["category"]))
+        _fold_question_bucket(bucket, info)
+    # Drop empty shells from groups whose members all failed to resolve.
+    return {k: v for k, v in merged.items() if int(v.get("count") or 0) > 0}
 
 
 def _reduce_questions(labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1106,29 +1277,26 @@ def _reduce_questions(labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]
             continue
         ckey = canonical.lower()
         members = g.get("members") or []
-        bucket = final.setdefault(
-            ckey,
-            {"question": canonical, "category": str(g.get("category") or "other").strip().lower(), "count": 0, "examples": []},
-        )
+        bucket = final.setdefault(ckey, _new_question_bucket(canonical, g.get("category")))
         for mlbl in members:
             mkey = str(mlbl or "").strip().lower()
             if mkey in labels and mkey not in assigned:
                 assigned.add(mkey)
-                bucket["count"] += int(labels[mkey]["count"])
-                _merge_example_tickets(
-                    bucket["examples"], labels[mkey]["examples"], _EXAMPLES_PER_QUESTION
-                )
+                _fold_question_bucket(bucket, labels[mkey])
 
     # Any labels the model failed to place — keep them standalone
     for mkey, info in labels.items():
         if mkey in assigned:
             continue
-        bucket = final.setdefault(
-            mkey,
-            {"question": info["label"], "category": info["category"], "count": 0, "examples": []},
-        )
-        bucket["count"] += int(info["count"])
-        _merge_example_tickets(bucket["examples"], info["examples"], _EXAMPLES_PER_QUESTION)
+        bucket = final.setdefault(mkey, _new_question_bucket(info["label"], info["category"]))
+        _fold_question_bucket(bucket, info)
+
+    # Cross-chunk merge: when labels were reduced in multiple chunks, the same
+    # question phrased two ways can land in different chunks and never get merged,
+    # fragmenting its demand across 2-3 rows. One more pass over the (much smaller)
+    # consolidated list fixes that.
+    if len(chunks) > 1 and len(final) > 1:
+        final = _merge_final_groups(final)
 
     # Deterministic safety net: force any cancel/pause/stop-service intent into the
     # dedicated "cancellation" category regardless of the LLM's choice.
@@ -1136,7 +1304,15 @@ def _reduce_questions(labels: dict[str, dict[str, Any]]) -> list[dict[str, Any]]
         if _is_cancellation_question(bucket.get("question", "")):
             bucket["category"] = "cancellation"
 
-    ranked = sorted(final.values(), key=lambda x: x["count"], reverse=True)
+    # Rank by recency-weighted demand (equals raw count when weighting disabled);
+    # raw count breaks ties so ordering stays stable.
+    ranked = sorted(
+        final.values(),
+        key=lambda x: (float(x.get("weighted") or 0.0), int(x.get("count") or 0)),
+        reverse=True,
+    )
+    for q in ranked:
+        q["weighted"] = round(float(q.get("weighted") or 0.0), 1)
     return ranked[:TOP_N]
 
 
@@ -1194,6 +1370,7 @@ def _compute_cs_questions() -> dict[str, Any]:
                     "ticket_text_enriched": aggregate_stats["ticket_text_enriched"],
                     "resolved_tickets": aggregate_stats["resolved_tickets"],
                     "open_tickets": aggregate_stats["open_tickets"],
+                    "same_day_duplicates_capped": aggregate_stats.get("same_day_duplicates_capped", 0),
                     "ranking_source": RANK_SOURCE,
                 }
             )
@@ -1229,6 +1406,8 @@ def _compute_cs_questions() -> dict[str, Any]:
         "ticket_text_enriched": aggregate_stats["ticket_text_enriched"],
         "resolved_tickets": aggregate_stats["resolved_tickets"],
         "open_tickets": aggregate_stats["open_tickets"],
+        "same_day_duplicates_capped": aggregate_stats.get("same_day_duplicates_capped", 0),
+        "recency_half_life_days": RECENCY_HALF_LIFE_DAYS,
         "ranking_source": RANK_SOURCE,
         **map_stats,
         "cache_full_hit": False,
@@ -1294,6 +1473,8 @@ def _run_rebuild() -> None:
                     "ticket_text_enriched": result.get("ticket_text_enriched", 0),
                     "resolved_tickets": result.get("resolved_tickets", 0),
                     "open_tickets": result.get("open_tickets", 0),
+                    "same_day_duplicates_capped": result.get("same_day_duplicates_capped", 0),
+                    "recency_half_life_days": result.get("recency_half_life_days", RECENCY_HALF_LIFE_DAYS),
                     "ranking_source": result.get("ranking_source", RANK_SOURCE),
                     "map_cache_hits": result.get("map_cache_hits", 0),
                     "map_cache_misses": result.get("map_cache_misses", 0),
