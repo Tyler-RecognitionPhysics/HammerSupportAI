@@ -50,6 +50,9 @@ let transcript: { role: "user" | "agent"; text: string }[] = [];
 // scrolls up to read history, in which case we preserve their position.
 let transcriptStickToBottom = true;
 let transcriptSavedScrollTop = 0;
+// Bring the live-conversation panel on screen once per call so the user never
+// has to hunt for it; after that, all scrolling happens inside the panel.
+let sessionPanelRevealed = false;
 let chatMessages: { role: "user" | "assistant"; content: string }[] = [];
 let chatSessionId = "";
 let chatBusy = false;
@@ -523,6 +526,15 @@ function render(): void {
       field.addEventListener("change", sync);
     });
 
+  if (live && !sessionPanelRevealed) {
+    sessionPanelRevealed = true;
+    const panel = document.querySelector(".help-session");
+    if (panel) {
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      panel.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    }
+  }
+
   const transcriptBody = document.getElementById("transcript-body");
   if (transcriptBody) {
     // The DOM is rebuilt on every render, so restore the right scroll position:
@@ -592,6 +604,7 @@ async function startVoice(): Promise<void> {
   transcript = [];
   transcriptStickToBottom = true;
   transcriptSavedScrollTop = 0;
+  sessionPanelRevealed = false;
   render();
   try {
     const { token } = await getConversationToken();

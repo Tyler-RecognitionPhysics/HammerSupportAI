@@ -720,6 +720,9 @@ body {
 .help-session {
   width: min(680px, 100%);
   margin-top: 32px;
+  /* The panel is auto-scrolled into view when a call connects (main.ts) — land
+     it just below the fixed header so the whole conversation card is on screen. */
+  scroll-margin-top: calc(var(--help-header-h) + 16px);
 }
 
 .help-session__status {
@@ -754,8 +757,10 @@ body {
   position: relative;
   padding: 0.9rem 1.25rem;
   /* Bounded, self-scrolling transcript: the newest line is always pinned into
-     view (see auto-scroll in main.ts) without growing the page height. */
-  max-height: min(46vh, 360px);
+     view (see auto-scroll in main.ts) without growing the page height. Sized so
+     that once the panel is scrolled into view, head + body + End-call footer all
+     fit the viewport — long conversations scroll INSIDE the card, never the page. */
+  max-height: max(280px, calc(100dvh - var(--help-header-h) - 260px));
   min-height: 116px;
   overflow-y: auto;
   overflow-x: hidden;

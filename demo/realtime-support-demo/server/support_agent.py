@@ -366,6 +366,18 @@ async def _prepare_turn(
         wiki = _WIKI_CACHE.get(call_id, "")
     if not wiki:
         wiki = executor.prefetched_wiki_context() or ""
+    # Vendor questions are answered from the structured vendor list (exact
+    # lookup beats BM25) — same data the chat AI and dashboard Vendors tab use.
+    if last_user:
+        try:
+            from support_vendors import vendor_context_block
+
+            vendor_block = vendor_context_block(last_user)
+            if vendor_block:
+                wiki = f"{wiki}\n\n{vendor_block}".strip() if wiki else vendor_block
+        except Exception:
+            _log.exception("support_agent: vendor context lookup failed")
+
     if call_id and wiki:
         if len(_WIKI_CACHE) > 256:
             _WIKI_CACHE.clear()

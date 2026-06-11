@@ -8,13 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/admin/support/dashboard.css?v=15" id="dashboardCss" />
+  <link rel="stylesheet" href="/admin/support/dashboard.css?v=16" id="dashboardCss" />
   <script>
     (function () {
       var link = document.getElementById("dashboardCss");
       link.href = location.pathname.indexOf("/debug/support-dashboard") !== -1
-        ? "/debug/support-dashboard.css?v=15"
-        : "/admin/support/dashboard.css?v=15";
+        ? "/debug/support-dashboard.css?v=16"
+        : "/admin/support/dashboard.css?v=16";
     })();
   </script>
 </head>
@@ -60,6 +60,7 @@
           <button class="tab" data-tab="calendar" role="tab">Calendar</button>
           <button class="tab" data-tab="billing" role="tab">Billing &amp; Cancellations <span class="tab__badge" id="billingTabBadge" hidden>0</span></button>
           <button class="tab" data-tab="knowledge" role="tab">Knowledge</button>
+          <button class="tab" data-tab="vendors" role="tab">Vendors</button>
           <button class="tab" data-tab="cs-questions" role="tab">CS Questions</button>
           <button class="tab" data-tab="qa" role="tab">Q&amp;A</button>
           <button class="tab" data-tab="settings" role="tab">Settings</button>
@@ -317,6 +318,88 @@
             </div>
             <div id="kbTicketPinsList" class="kb-pin-list"></div>
           </div>
+        </section>
+
+        <section class="panel" id="panel-vendors" role="tabpanel">
+          <div class="pb-hero">
+            <div class="pb-hero__main">
+              <div class="pb-hero__title">
+                Vendors
+                <span class="pb-count" id="vndCount">—</span>
+              </div>
+              <p class="pb-hero__sub">Every feed and website vendor we track. Hannah answers vendor questions in chat and voice straight from this list, so keep it current.</p>
+            </div>
+            <button class="btn btn--primary btn--red pb-add-btn" id="btnVndAdd" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Add vendor
+            </button>
+          </div>
+
+          <form class="kb-playbook-add pb-add-form" id="vndForm" hidden>
+            <div class="pb-add-form__title" id="vndFormTitle">New vendor</div>
+            <div class="vnd-form-grid">
+              <div class="vnd-form-field vnd-form-field--wide">
+                <label class="kb-playbook-add__label" for="vndFieldName">Vendor name</label>
+                <input type="text" id="vndFieldName" class="kb-playbook-add__input" placeholder="e.g. Auto Trader" autocomplete="off" />
+              </div>
+              <div class="vnd-form-field">
+                <label class="kb-playbook-add__label" for="vndFieldSupported">Do we work with them?</label>
+                <select id="vndFieldSupported" class="kb-playbook-add__input">
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                  <option value="Pending Confirmation">Pending Confirmation</option>
+                  <option value="Pending">Pending</option>
+                  <option value="No Longer Available">No Longer Available</option>
+                  <option value="Charges Fees to Get Feed">Charges Fees to Get Feed</option>
+                  <option value="">Unknown</option>
+                </select>
+              </div>
+              <div class="vnd-form-field">
+                <label class="kb-playbook-add__label" for="vndFieldCountry">Country</label>
+                <input type="text" id="vndFieldCountry" class="kb-playbook-add__input" placeholder="e.g. United States" autocomplete="off" />
+              </div>
+              <div class="vnd-form-field">
+                <label class="kb-playbook-add__label" for="vndFieldIntegration">Integration</label>
+                <input type="text" id="vndFieldIntegration" class="kb-playbook-add__input" placeholder="e.g. HA, Direct, None" autocomplete="off" />
+              </div>
+              <div class="vnd-form-field">
+                <label class="kb-playbook-add__label" for="vndFieldStatus">Feed status</label>
+                <select id="vndFieldStatus" class="kb-playbook-add__input">
+                  <option value="">—</option>
+                  <option value="Successful">Successful</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Has Issues">Has Issues</option>
+                  <option value="Cannot Use">Cannot Use</option>
+                </select>
+              </div>
+              <div class="vnd-form-field vnd-form-field--wide">
+                <label class="kb-playbook-add__label" for="vndFieldNotes">Notes</label>
+                <textarea id="vndFieldNotes" class="kb-playbook-add__textarea" rows="2" placeholder="Anything the team or Hannah should know about this vendor…"></textarea>
+              </div>
+            </div>
+            <div class="kb-playbook-add__foot">
+              <span class="kb-playbook-add__msg" id="vndFormMsg"></span>
+              <div class="kb-playbook-add__actions">
+                <button type="button" class="btn btn--sm" id="vndFormCancel">Cancel</button>
+                <button type="submit" class="btn btn--sm btn--primary btn--red" id="vndFormSave">Save vendor</button>
+              </div>
+            </div>
+          </form>
+
+          <div class="pb-toolbar">
+            <div class="pb-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="search" id="vndSearch" placeholder="Find a vendor…" autocomplete="off" aria-label="Search vendors" />
+            </div>
+            <div class="vnd-filters" role="group" aria-label="Filter vendors">
+              <button class="vnd-chip is-active" data-vnd-filter="all" type="button">All</button>
+              <button class="vnd-chip" data-vnd-filter="yes" type="button">Works with us</button>
+              <button class="vnd-chip" data-vnd-filter="no" type="button">Not supported</button>
+              <button class="vnd-chip" data-vnd-filter="pending" type="button">Pending</button>
+            </div>
+          </div>
+
+          <div id="vndList" class="vnd-list"></div>
         </section>
 
         <section class="panel" id="panel-cs-questions" role="tabpanel">
@@ -610,7 +693,7 @@
   <script>
     const API = "/api/admin/support";
     const TOKEN_KEY = "support_admin_token";
-    const PAGE_TITLES = { overview: "Overview", sessions: "Sessions", calendar: "Calendar", billing: "Billing & Cancellations", knowledge: "Knowledge", "cs-questions": "CS Questions", qa: "Questions & Answers", settings: "Settings" };
+    const PAGE_TITLES = { overview: "Overview", sessions: "Sessions", calendar: "Calendar", billing: "Billing & Cancellations", knowledge: "Knowledge", vendors: "Vendors", "cs-questions": "CS Questions", qa: "Questions & Answers", settings: "Settings" };
     let csqPollTimer = null;
     let ticketsPollTimer = null;
     let csqData = null;
@@ -3148,6 +3231,163 @@
       }
     });
 
+    // ----- Vendors -----
+    let cachedVendors = [];
+    let vndFilter = "all";
+    let vndEditingId = null;
+    let vndLoaded = false;
+
+    function vndSupportedKind(s) {
+      const v = String(s || "").toLowerCase();
+      if (v === "yes") return "yes";
+      if (v === "no" || v === "no longer available") return "no";
+      if (v) return "pending";
+      return "unknown";
+    }
+
+    function vndBadge(vendor) {
+      const kind = vndSupportedKind(vendor.supported);
+      const label = vendor.supported || "Unknown";
+      return `<span class="vnd-badge vnd-badge--${kind}">${escapeHtml(label)}</span>`;
+    }
+
+    function renderVendors() {
+      const list = $("#vndList");
+      if (!list) return;
+      const q = ($("#vndSearch")?.value || "").trim().toLowerCase();
+      const rows = cachedVendors.filter((v) => {
+        const kind = vndSupportedKind(v.supported);
+        if (vndFilter === "yes" && kind !== "yes") return false;
+        if (vndFilter === "no" && kind !== "no") return false;
+        if (vndFilter === "pending" && kind !== "pending" && kind !== "unknown") return false;
+        if (!q) return true;
+        return [v.name, v.country, v.integration, v.status, v.notes].join(" ").toLowerCase().includes(q);
+      });
+      $("#vndCount").textContent = vndLoaded ? `${cachedVendors.length} vendors` : "—";
+      if (!rows.length) {
+        list.innerHTML = `<div class="vnd-empty">${vndLoaded ? "No vendors match. Try a different search or filter." : "Loading vendors…"}</div>`;
+        return;
+      }
+      list.innerHTML = rows
+        .map((v) => {
+          const meta = [
+            v.country ? `<span class="vnd-meta-item">${escapeHtml(v.country)}</span>` : "",
+            v.integration ? `<span class="vnd-meta-item">Integration: ${escapeHtml(v.integration)}</span>` : "",
+            v.status ? `<span class="vnd-meta-item">Feed: ${escapeHtml(v.status)}</span>` : "",
+          ].filter(Boolean).join("");
+          return `
+            <div class="vnd-row" data-vendor-id="${escapeHtml(v.id)}">
+              <div class="vnd-row__main">
+                <div class="vnd-row__top">
+                  <span class="vnd-row__name">${escapeHtml(v.name)}</span>
+                  ${vndBadge(v)}
+                </div>
+                ${meta ? `<div class="vnd-row__meta">${meta}</div>` : ""}
+                ${v.notes ? `<div class="vnd-row__notes">${escapeHtml(v.notes)}</div>` : ""}
+              </div>
+              <div class="vnd-row__actions">
+                <button class="btn btn--sm" data-vnd-edit="${escapeHtml(v.id)}" type="button">Edit</button>
+                <button class="btn btn--sm vnd-del" data-vnd-del="${escapeHtml(v.id)}" type="button" aria-label="Delete ${escapeHtml(v.name)}">Delete</button>
+              </div>
+            </div>`;
+        })
+        .join("");
+    }
+
+    async function refreshVendors() {
+      const data = await api("/vendors");
+      cachedVendors = data.vendors || [];
+      vndLoaded = true;
+      renderVendors();
+    }
+
+    function vndOpenForm(vendor) {
+      vndEditingId = vendor ? vendor.id : null;
+      $("#vndFormTitle").textContent = vendor ? `Edit ${vendor.name}` : "New vendor";
+      $("#vndFieldName").value = vendor?.name || "";
+      $("#vndFieldSupported").value = vendor?.supported ?? "Yes";
+      $("#vndFieldCountry").value = vendor?.country || "";
+      $("#vndFieldIntegration").value = vendor?.integration || "";
+      $("#vndFieldStatus").value = vendor?.status || "";
+      $("#vndFieldNotes").value = vendor?.notes || "";
+      $("#vndFormMsg").textContent = "";
+      $("#vndForm").hidden = false;
+      $("#vndForm").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      $("#vndFieldName").focus();
+    }
+
+    function vndCloseForm() {
+      vndEditingId = null;
+      $("#vndForm").hidden = true;
+    }
+
+    $("#btnVndAdd")?.addEventListener("click", () => vndOpenForm(null));
+    $("#vndFormCancel")?.addEventListener("click", vndCloseForm);
+
+    $("#vndForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const msg = $("#vndFormMsg");
+      const body = {
+        name: $("#vndFieldName").value.trim(),
+        supported: $("#vndFieldSupported").value,
+        country: $("#vndFieldCountry").value.trim(),
+        integration: $("#vndFieldIntegration").value.trim(),
+        status: $("#vndFieldStatus").value,
+        notes: $("#vndFieldNotes").value.trim(),
+      };
+      if (!body.name) {
+        msg.textContent = "Vendor name is required.";
+        return;
+      }
+      $("#vndFormSave").disabled = true;
+      msg.textContent = "Saving…";
+      try {
+        const res = vndEditingId
+          ? await api(`/vendors/${encodeURIComponent(vndEditingId)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+          : await api("/vendors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (res.ok === false) {
+          msg.textContent = res.error || "Could not save vendor.";
+        } else {
+          vndCloseForm();
+          await refreshVendors();
+        }
+      } catch (err) {
+        msg.textContent = "Could not save vendor. Try again.";
+      } finally {
+        $("#vndFormSave").disabled = false;
+      }
+    });
+
+    $("#vndSearch")?.addEventListener("input", renderVendors);
+
+    document.querySelectorAll("[data-vnd-filter]").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        vndFilter = chip.dataset.vndFilter;
+        document.querySelectorAll("[data-vnd-filter]").forEach((c) => c.classList.toggle("is-active", c === chip));
+        renderVendors();
+      });
+    });
+
+    $("#vndList")?.addEventListener("click", async (e) => {
+      const editId = e.target.closest("[data-vnd-edit]")?.dataset.vndEdit;
+      if (editId) {
+        const vendor = cachedVendors.find((v) => v.id === editId);
+        if (vendor) vndOpenForm(vendor);
+        return;
+      }
+      const delId = e.target.closest("[data-vnd-del]")?.dataset.vndDel;
+      if (delId) {
+        const vendor = cachedVendors.find((v) => v.id === delId);
+        if (!vendor || !confirm(`Delete "${vendor.name}" from the vendor list?`)) return;
+        try {
+          await api(`/vendors/${encodeURIComponent(delId)}`, { method: "DELETE" });
+          await refreshVendors();
+        } catch {
+          alert("Could not delete vendor. Try again.");
+        }
+      }
+    });
+
     document.querySelectorAll(".tab").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".tab").forEach((b) => b.classList.remove("is-active"));
@@ -3160,6 +3400,7 @@
           if (newSessionIds.size) scheduleSessionsSeen();
           refreshSessions().catch(() => {});
         }
+        if (btn.dataset.tab === "vendors" && !vndLoaded) refreshVendors().catch(() => {});
         if (btn.dataset.tab === "cs-questions") refreshCsQuestions().catch(() => {});
         if (btn.dataset.tab === "calendar") refreshCalendar().catch(() => {});
         if (btn.dataset.tab === "qa") refreshQa().catch(() => {});

@@ -16,6 +16,9 @@ primary_region = "iad"
   # Live playbook lives on the volume so dashboard edits survive redeploys.
   # Serverless (Vercel) instances pull this file so voice + chat ground on it.
   SUPPORT_PLAYBOOK_MD = "/data/playbook/approved.md"
+  # Vendor list lives on the volume so dashboard edits survive redeploys.
+  # Serverless (Vercel) instances read it via the vendors admin API.
+  SUPPORT_VENDORS_JSON = "/data/vendors.json"
   SUPPORT_DATA_DIR = "/data"
   SUPPORT_RAW_DIR = "/data/raw/support-data"
   SUPPORT_KB_DB = "/data/support_kb.sqlite"

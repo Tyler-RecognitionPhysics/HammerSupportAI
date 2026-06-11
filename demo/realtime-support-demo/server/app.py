@@ -929,6 +929,51 @@ async def admin_knowledge_ask_regenerate(request: Request) -> dict:
         raise HTTPException(500, str(exc)) from exc
 
 
+@app.get("/api/admin/support/vendors")
+def admin_vendors_list(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_vendors import list_vendors
+
+    return list_vendors()
+
+
+@app.post("/api/admin/support/vendors")
+async def admin_vendors_create(request: Request) -> dict:
+    require_admin_auth(request)
+    from support_vendors import create_vendor
+
+    return create_vendor(await request.json())
+
+
+@app.put("/api/admin/support/vendors/bulk")
+async def admin_vendors_replace(request: Request) -> dict:
+    """Bulk import — replaces the entire vendor list (used for seeding)."""
+    require_admin_auth(request)
+    from support_vendors import replace_vendors
+
+    body = await request.json()
+    vendors = body.get("vendors") if isinstance(body, dict) else body
+    if not isinstance(vendors, list):
+        raise HTTPException(400, "Body must contain a vendors array")
+    return replace_vendors(vendors)
+
+
+@app.put("/api/admin/support/vendors/{vendor_id}")
+async def admin_vendors_update(request: Request, vendor_id: str) -> dict:
+    require_admin_auth(request)
+    from support_vendors import update_vendor
+
+    return update_vendor(vendor_id, await request.json())
+
+
+@app.delete("/api/admin/support/vendors/{vendor_id}")
+def admin_vendors_delete(request: Request, vendor_id: str) -> dict:
+    require_admin_auth(request)
+    from support_vendors import delete_vendor
+
+    return delete_vendor(vendor_id)
+
+
 @app.get("/api/admin/support/knowledge/playbook")
 def admin_playbook_get(request: Request) -> dict:
     require_admin_auth(request)

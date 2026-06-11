@@ -154,6 +154,17 @@ async def complete_support_chat(
     # NOT feed troubleshooting KB into the prompt — otherwise the model grounds in
     # it and lists "things to check" even though it was told not to.
     wiki_context = "" if route_facebook else (_support_context(retriever, last_user) if last_user.strip() else "")
+    if not route_facebook and last_user.strip():
+        # Vendor questions are answered from the structured vendor list — the
+        # same data the voice AI and the dashboard Vendors tab use.
+        try:
+            from support_vendors import vendor_context_block
+
+            vendor_block = vendor_context_block(last_user)
+            if vendor_block:
+                wiki_context = f"{wiki_context}\n\n{vendor_block}".strip()
+        except Exception:
+            pass
     system = build_support_chat_prompt(wiki_context=wiki_context)
 
     openai_messages: list[dict] = [{"role": "system", "content": system}]
