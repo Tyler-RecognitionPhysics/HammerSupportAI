@@ -51,6 +51,17 @@ Set-Location $root
 & $fly deploy --config demo/realtime-support-demo/fly.toml
 
 $base = "https://${AppName}.fly.dev"
+
+# The ElevenLabs voice agent points its custom LLM at this host — prewarm the
+# retriever/connections so the first caller after a deploy pays no build tax.
+Write-Host "Warming up $base/api/warmup ..." -ForegroundColor Cyan
+try {
+  $warm = Invoke-RestMethod -Uri "$base/api/warmup" -TimeoutSec 120
+  Write-Host ("  warmup: " + ($warm | ConvertTo-Json -Compress))
+} catch {
+  Write-Host "  warmup ping failed (machine may still be starting): $_" -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Persistent sync host:" -ForegroundColor Green
 Write-Host "  $base/api/health"
