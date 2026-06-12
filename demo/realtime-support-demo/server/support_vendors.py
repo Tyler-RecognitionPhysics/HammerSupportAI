@@ -19,7 +19,7 @@ from typing import Any
 
 _SERVER_DIR = Path(__file__).resolve().parent
 
-VENDOR_FIELDS = ("name", "supported", "country", "integration", "status", "notes")
+VENDOR_FIELDS = ("name", "supported", "country", "integration", "status", "notes", "emails", "phones")
 SUPPORTED_LABELS = (
     "Yes",
     "No",

@@ -359,6 +359,14 @@
                 </select>
               </div>
               <div class="vnd-form-field vnd-form-field--wide">
+                <label class="kb-playbook-add__label" for="vndFieldEmails">Email(s)</label>
+                <input type="text" id="vndFieldEmails" class="kb-playbook-add__input" placeholder="support@vendor.com, feeds@vendor.com" autocomplete="off" />
+              </div>
+              <div class="vnd-form-field vnd-form-field--wide">
+                <label class="kb-playbook-add__label" for="vndFieldPhones">Phone number(s)</label>
+                <input type="text" id="vndFieldPhones" class="kb-playbook-add__input" placeholder="(800) 555-0100, Tech support: (800) 555-0101" autocomplete="off" />
+              </div>
+              <div class="vnd-form-field vnd-form-field--wide">
                 <label class="kb-playbook-add__label" for="vndFieldNotes">Notes</label>
                 <textarea id="vndFieldNotes" class="kb-playbook-add__textarea" rows="2" placeholder="Anything the team or Hannah should know about this vendor…"></textarea>
               </div>
@@ -3453,6 +3461,33 @@
       return `<span class="vnd-badge vnd-badge--${kind}">${escapeHtml(label)}</span>`;
     }
 
+    const VND_EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+    const VND_ICON_MAIL = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>`;
+    const VND_ICON_PHONE = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
+
+    function vndSplitContact(value) {
+      return String(value || "")
+        .split(/[,;|\n]+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+
+    function vndContactChips(vendor) {
+      const chips = [];
+      for (const item of vndSplitContact(vendor.emails)) {
+        const m = item.match(VND_EMAIL_RE);
+        chips.push(
+          m
+            ? `<a class="vnd-contact-chip vnd-contact-chip--link" href="mailto:${escapeHtml(m[0])}">${VND_ICON_MAIL}<span>${escapeHtml(item)}</span></a>`
+            : `<span class="vnd-contact-chip">${VND_ICON_MAIL}<span>${escapeHtml(item)}</span></span>`
+        );
+      }
+      for (const item of vndSplitContact(vendor.phones)) {
+        chips.push(`<span class="vnd-contact-chip">${VND_ICON_PHONE}<span>${escapeHtml(item)}</span></span>`);
+      }
+      return chips.join("");
+    }
+
     function renderVendors() {
       const list = $("#vndList");
       if (!list) return;
@@ -3463,7 +3498,7 @@
         if (vndFilter === "no" && kind !== "no") return false;
         if (vndFilter === "pending" && kind !== "pending" && kind !== "unknown") return false;
         if (!q) return true;
-        return [v.name, v.country, v.integration, v.status, v.notes].join(" ").toLowerCase().includes(q);
+        return [v.name, v.country, v.integration, v.status, v.notes, v.emails, v.phones].join(" ").toLowerCase().includes(q);
       });
       $("#vndCount").textContent = vndLoaded ? `${cachedVendors.length} vendors` : "—";
       if (!rows.length) {
@@ -3477,6 +3512,7 @@
             v.integration ? `<span class="vnd-meta-item">Integration: ${escapeHtml(v.integration)}</span>` : "",
             v.status ? `<span class="vnd-meta-item">Feed: ${escapeHtml(v.status)}</span>` : "",
           ].filter(Boolean).join("");
+          const contact = vndContactChips(v);
           return `
             <div class="vnd-row" data-vendor-id="${escapeHtml(v.id)}">
               <div class="vnd-row__main">
@@ -3485,6 +3521,7 @@
                   ${vndBadge(v)}
                 </div>
                 ${meta ? `<div class="vnd-row__meta">${meta}</div>` : ""}
+                ${contact ? `<div class="vnd-row__contact">${contact}</div>` : ""}
                 ${v.notes ? `<div class="vnd-row__notes">${escapeHtml(v.notes)}</div>` : ""}
               </div>
               <div class="vnd-row__actions">
@@ -3511,6 +3548,8 @@
       $("#vndFieldCountry").value = vendor?.country || "";
       $("#vndFieldIntegration").value = vendor?.integration || "";
       $("#vndFieldStatus").value = vendor?.status || "";
+      $("#vndFieldEmails").value = vendor?.emails || "";
+      $("#vndFieldPhones").value = vendor?.phones || "";
       $("#vndFieldNotes").value = vendor?.notes || "";
       $("#vndFormMsg").textContent = "";
       $("#vndForm").hidden = false;
@@ -3535,6 +3574,8 @@
         country: $("#vndFieldCountry").value.trim(),
         integration: $("#vndFieldIntegration").value.trim(),
         status: $("#vndFieldStatus").value,
+        emails: $("#vndFieldEmails").value.trim(),
+        phones: $("#vndFieldPhones").value.trim(),
         notes: $("#vndFieldNotes").value.trim(),
       };
       if (!body.name) {

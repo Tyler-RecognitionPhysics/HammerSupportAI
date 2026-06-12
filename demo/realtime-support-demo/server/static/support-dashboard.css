@@ -6435,6 +6435,43 @@ mark.kb-used {
   overflow-wrap: anywhere;
 }
 
+.vnd-row__contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.vnd-contact-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.14rem 0.55rem;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.vnd-contact-chip svg {
+  flex-shrink: 0;
+  opacity: 0.65;
+}
+
+a.vnd-contact-chip--link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+a.vnd-contact-chip--link:hover {
+  color: var(--red);
+  border-color: var(--red);
+}
+
 .vnd-row__actions {
   display: flex;
   gap: 0.35rem;
