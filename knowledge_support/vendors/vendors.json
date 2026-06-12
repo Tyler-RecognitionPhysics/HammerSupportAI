@@ -630,7 +630,7 @@
   {
    "id": "cargurus",
    "name": "CarGurus",
-   "supported": "No",
+   "supported": "Yes",
    "country": "United States, Canada",
    "integration": "N/A",
    "status": "",
